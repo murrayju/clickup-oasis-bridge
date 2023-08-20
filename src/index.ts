@@ -1,0 +1,88 @@
+import crypto from 'crypto';
+import dotenv from 'dotenv';
+import express, { NextFunction, type Request, type Response } from 'express';
+import ngrok from 'ngrok';
+
+import { ClickUpService, type ClickUpWebhook } from './clickup';
+
+const { error } = dotenv.config();
+if (error) {
+  console.error('Invalid .env file', error);
+  process.exit(1);
+}
+
+const port = parseInt(process.env.PORT || '80', 10);
+const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
+console.info('Using public URL:', publicUrl);
+
+const { CLICKUP_API_TOKEN, CLICKUP_TEAM_ID } = process.env;
+if (!CLICKUP_API_TOKEN) {
+  throw new Error('Missing CLICKUP_API_TOKEN in .env');
+}
+if (!CLICKUP_TEAM_ID) {
+  throw new Error('Missing CLICKUP_TEAM_ID in .env');
+}
+const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
+
+const { webhook } = (await clickUpService.teamFetch('webhook', {
+  method: 'POST',
+  json: {
+    endpoint: `${publicUrl}/webhook`,
+    events: ['taskCreated'],
+  },
+})) as ClickUpWebhook;
+console.info('registered webhook', webhook.id);
+
+const app = express();
+
+app.post(
+  '/webhook',
+  (req: Request, res: Response, next: NextFunction) => {
+    let data = '';
+    req.on('data', function (chunk) {
+      data += chunk;
+    });
+    req.on('end', function () {
+      const hash = crypto
+        .createHmac('sha256', webhook.secret)
+        .update(data)
+        .digest('hex');
+      if (req.headers['x-signature'] !== hash) {
+        console.warn('webhook signature mismatch');
+        return res.sendStatus(400);
+      }
+      req.body = JSON.parse(data);
+      if (req.body.webhook_id !== webhook.id) {
+        console.warn('webhook id mismatch');
+        return res.sendStatus(400);
+      }
+
+      next();
+    });
+  },
+  async (req: Request, res: Response) => {
+    console.log('webhook received', req.body);
+
+    res.sendStatus(200);
+  },
+);
+
+const server = app.listen(port, () => {
+  console.info(`Server listening on port ${port}`);
+});
+
+// delete webhook on process exit
+process.on('SIGINT', async () => {
+  console.info('shutting down');
+  server.close();
+  try {
+    await clickUpService.fetch(`webhook/${webhook.id}`, {
+      method: 'DELETE',
+    });
+    console.info('webhook deleted');
+  } catch (err) {
+    console.error(err);
+  }
+  await ngrok.kill();
+  process.exit(0);
+});
