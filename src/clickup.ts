@@ -60,3 +60,193 @@ export interface ClickUpWebhook {
     secret: string;
   };
 }
+
+interface Status {
+  id?: string;
+  status: string | null;
+  color: string;
+  type: string;
+  orderindex: number;
+}
+
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  color: string;
+  initials?: string;
+  profilePicture: string | null;
+}
+
+export interface HistoryItem {
+  id: string;
+  type: number;
+  date: string;
+  field: string;
+  parent_id: string;
+  data: {
+    status_type?: string;
+    via?: string;
+    trace_id?: string;
+    subcategory_id?: string;
+  };
+  source: string | null;
+  user: User;
+  before: Status | null;
+  after: Status | null;
+}
+
+export interface TaskCreatedEvent {
+  event: 'taskCreated';
+  history_items: HistoryItem[];
+  task_id: string;
+  webhook_id: string;
+}
+
+interface Checklist {
+  id: string;
+  name: string;
+  orderindex: number;
+  task_id: string;
+  date_created: string;
+  date_updated: string;
+  resolved: number;
+  items: {
+    id: string;
+    content: string;
+    resolved: boolean;
+    orderindex: number;
+  }[];
+}
+
+interface BaseField {
+  id: string;
+  name: string;
+  type: string;
+  date_created: string;
+  required: boolean;
+  hide_from_guests: boolean;
+  type_config: Record<string, unknown>;
+}
+
+interface LabelsField extends BaseField {
+  type: 'labels';
+  type_config: {
+    options: {
+      id: string;
+      label: string;
+      color: string | null;
+    }[];
+  };
+  value: string[];
+}
+
+interface UrlField extends BaseField {
+  type: 'url';
+  value?: string;
+}
+
+interface CheckboxField extends BaseField {
+  type: 'checkbox';
+  value?: boolean;
+}
+
+interface TextField extends BaseField {
+  type: 'short_text' | 'location' | 'date' | 'email' | 'phone';
+  value?: string;
+}
+
+interface DropDownField extends BaseField {
+  type: 'drop_down';
+  type_config: {
+    default: number;
+    placeholder: string | null;
+    new_drop_down?: boolean;
+    options: {
+      id: string;
+      name: string;
+      color: string | null;
+      orderindex: number;
+    }[];
+  };
+  value?: number;
+}
+
+interface CurrencyField extends BaseField {
+  type: 'currency';
+  type_config: {
+    default: null | string;
+    precision: number;
+    currency_type: string;
+  };
+  value?: string;
+}
+
+type Field =
+  | LabelsField
+  | UrlField
+  | CheckboxField
+  | TextField
+  | DropDownField
+  | CurrencyField;
+
+export interface Task {
+  id: string;
+  custom_id: string | null;
+  name: string;
+  text_content: string;
+  description: string;
+  status: Status;
+  orderindex: string;
+  date_created: string;
+  date_updated: string;
+  date_closed: string | null;
+  date_done: string | null;
+  archived: boolean;
+  creator: User;
+  assignees: User[];
+  watchers: User[];
+  checklists: Checklist[];
+  tags: string[];
+  parent: null;
+  priority: null;
+  due_date: string | null;
+  start_date: string | null;
+  points: null;
+  time_estimate: null;
+  time_spent: number;
+  custom_fields: Field[];
+  dependencies: null[];
+  linked_tasks: null[];
+  team_id: string;
+  url: string;
+  sharing: {
+    public: boolean;
+    public_share_expires_on: string | null;
+    public_fields: string[];
+    token: string | null;
+    seo_optimized: boolean;
+  };
+  permission_level: string;
+  list: {
+    id: string;
+    name: string;
+    access: boolean;
+  };
+  project: {
+    id: string;
+    name: string;
+    hidden: boolean;
+    access: boolean;
+  };
+  folder: {
+    id: string;
+    name: string;
+    hidden: boolean;
+    access: boolean;
+  };
+  space: {
+    id: string;
+  };
+  attachments: null[];
+}
