@@ -1,10 +1,16 @@
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import express, { NextFunction, type Request, type Response } from 'express';
+import Router from 'express-promise-router';
 import ngrok from 'ngrok';
 
-import { ClickUpService, type ClickUpWebhook } from './clickup';
-import { OasisService } from './oasis';
+import {
+  ClickUpService,
+  TaskCreatedEvent,
+  type ClickUpWebhook,
+  ClickUpTask,
+} from './clickup';
+import { Case, OasisService } from './oasis';
 
 const { error } = dotenv.config();
 if (error) {
@@ -43,8 +49,10 @@ const { webhook } = (await clickUpService.teamFetch('webhook', {
 console.info('registered webhook', webhook.id);
 
 const app = express();
+const router = Router();
+app.use(router);
 
-app.post(
+router.post(
   '/webhook',
   // verify webhook signature
   (req: Request, res: Response, next: NextFunction) => {
@@ -72,11 +80,50 @@ app.post(
   },
   // handle webhook request
   async (req: Request, res: Response) => {
-    console.log('webhook received:', JSON.stringify(req.body, null, 2));
+    console.log('webhook received:', req.body.event);
+    if (req.body.event === 'taskCreated') {
+      const taskCreated: TaskCreatedEvent = req.body;
+      const task = new ClickUpTask(
+        await clickUpService.fetch(`task/${taskCreated.task_id}`),
+      );
+      console.info(`taskCreated: ${task.id}`);
+
+      const data = {
+        first_name: `${task.getString('First Name')}`,
+        last_name: `${task.getString('Last Name')}`,
+        date_of_birth: `${task.getDropdownString(
+          'Date of Birth Year',
+        )}-${task.getDropdownString(
+          'Date of Birth Month',
+        )}-${task.getDropdownString('Date of Birth Day')}`,
+        email: `${task.getString('Email')}`,
+        head_of_household: true,
+        street_address: `${task.getString('Address')}`,
+        street_city: `${task.getString('City')}`,
+        street_zip_code: `${task.getString('Zip Code')}`,
+        yearly_income:
+          (task.getNumber('Gross Household Income (Monthly)', 'currency') ??
+            0) * 12,
+      };
+      console.log('posting data:', data);
+
+      // The trailing slash on `cases/` is important
+      const result: Case = await oasisService.fetch('cases/', {
+        json: data,
+        method: 'POST',
+      });
+      console.info(`Case created: ${result.url}`);
+      console.info(`Case: ${JSON.stringify(result, null, 2)}`);
+    }
 
     res.sendStatus(200);
   },
 );
+
+router.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error(err);
+  res.sendStatus(500);
+});
 
 const server = app.listen(port, () => {
   console.info(`Server listening on port ${port}`);

@@ -1,5 +1,3 @@
-import fetch, { type RequestInit } from 'node-fetch';
-
 interface Options extends RequestInit {
   json?: Record<string, unknown>;
 }
@@ -14,7 +12,10 @@ export class ClickUpService {
     this.teamId = teamId;
   }
 
-  async fetch(route: string, { json, ...options }: Options = {}) {
+  async fetch<T>(
+    route: string,
+    { json, ...options }: Options = {},
+  ): Promise<T> {
     const url = `${this.baseUrl}${route}`;
 
     console.info(`${options?.method ?? 'GET'} ${url}`);
@@ -32,7 +33,7 @@ export class ClickUpService {
       throw new Error(`ClickUp API error: ${res.status} ${res.statusText}`);
     }
 
-    return res.json();
+    return res.json() as Promise<T>;
   }
 
   async teamFetch(route: string, options?: Options) {
@@ -156,18 +157,20 @@ interface TextField extends BaseField {
   value?: string;
 }
 
-interface DropDownField extends BaseField {
+interface DropDownOption {
+  id: string;
+  name: string;
+  color: string | null;
+  orderindex: number;
+}
+
+export interface DropDownField extends BaseField {
   type: 'drop_down';
   type_config: {
     default: number;
     placeholder: string | null;
     new_drop_down?: boolean;
-    options: {
-      id: string;
-      name: string;
-      color: string | null;
-      orderindex: number;
-    }[];
+    options: DropDownOption[];
   };
   value?: number;
 }
@@ -249,4 +252,67 @@ export interface Task {
     id: string;
   };
   attachments: null[];
+}
+
+export class ClickUpTask {
+  task: Task;
+
+  constructor(task: Task) {
+    this.task = task;
+  }
+
+  get id(): string {
+    return this.task.id;
+  }
+
+  getField(name: string, type?: string): Field | null {
+    let prefixMatch = null;
+    for (const field of this.task.custom_fields) {
+      if (type && field.type !== type) {
+        continue;
+      }
+      if (field.name === name) {
+        return field;
+      }
+      if (field.name.startsWith(name) && !prefixMatch) {
+        prefixMatch = field;
+      }
+    }
+    return prefixMatch;
+  }
+
+  getDropdownOption(name: string): DropDownOption | null {
+    const field = this.getField(name, 'drop_down');
+    if (field?.value == null || field.type !== 'drop_down') {
+      return null;
+    }
+    return field.type_config.options[field.value];
+  }
+
+  getDropdownString(name: string): string | null {
+    return this.getDropdownOption(name)?.name || null;
+  }
+
+  getString(name: string, type?: string): string | null {
+    const field = this.getField(name, type);
+    if (
+      field?.value == null ||
+      (field.type !== 'short_text' &&
+        field.type !== 'location' &&
+        field.type !== 'date' &&
+        field.type !== 'email' &&
+        field.type !== 'phone')
+    ) {
+      return null;
+    }
+    return field.value || null;
+  }
+
+  getNumber(name: string, type?: string): number | null {
+    const field = this.getField(name, type);
+    if (field?.value == null || field.type !== 'currency') {
+      return null;
+    }
+    return parseFloat(field.value);
+  }
 }
