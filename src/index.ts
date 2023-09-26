@@ -11,6 +11,7 @@ import {
   ClickUpTask,
 } from './clickup';
 import { Case, OasisService } from './oasis';
+import { mapDemographic } from './demographics';
 
 const { error } = dotenv.config();
 if (error) {
@@ -131,9 +132,8 @@ router.post(
       console.debug(`Case: ${JSON.stringify(newCase, null, 2)}`);
 
       // Demographics
-      for (const [groupName, detailName] of [
-        ['Ethnicity', task.getDropdownString('Ethnicity')],
-      ] as const) {
+      for (const groupName of ['Ethnicity', 'Gender'] as const) {
+        const detailName = mapDemographic(groupName, task);
         try {
           await oasisService.addCaseDetail(newCase, groupName, detailName);
           console.debug(`Set demographic(${groupName}, ${detailName})`);
