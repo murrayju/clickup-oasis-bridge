@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import express, { NextFunction, type Request, type Response } from 'express';
 import Router from 'express-promise-router';
 import ngrok from 'ngrok';
-import fs from 'fs';
 
 import {
   ClickUpService,
@@ -25,6 +24,7 @@ const {
   OASIS_API_TOKEN,
   OASIS_BASE_URL,
   USE_CACHED_DETAILS,
+  USE_CACHED_GROUPS,
 } = process.env;
 if (!CLICKUP_API_TOKEN) {
   throw new Error('Missing CLICKUP_API_TOKEN in .env');
@@ -40,6 +40,11 @@ if (!OASIS_BASE_URL) {
 }
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
+
+const groups = USE_CACHED_GROUPS
+  ? oasisService.setGroups((await import('./fixtures/groups')).groups)
+  : await oasisService.getGroups();
+console.info(`Loaded ${groups.length} Groups`);
 
 const details = USE_CACHED_DETAILS
   ? oasisService.setDetails((await import('./fixtures/details')).details)

@@ -6,6 +6,7 @@ interface Options extends RequestInit {
 export class OasisService {
   private baseUrl: string;
   private token: string;
+  private groups: Group[] | null = null;
   private details: Detail[] | null = null;
 
   constructor(token: string, baseUrl: string) {
@@ -52,15 +53,19 @@ export class OasisService {
     return res.json() as Promise<T>;
   }
 
-  async fetchAllDetails(): Promise<Detail[]> {
-    let next: string | null = 'details/';
-    const details: Detail[] = [];
+  async fetchPaged<T>(route: string): Promise<T[]> {
+    let next: string | null = route;
+    const results: T[] = [];
     do {
-      const response: DetailResponse = await this.fetch(next);
-      details.push(...response.results);
+      const response: PagedResponse<T> = await this.fetch(next);
+      results.push(...response.results);
       next = response.next;
     } while (next);
-    return details;
+    return results;
+  }
+
+  async fetchAllDetails(): Promise<Detail[]> {
+    return this.fetchPaged('details/');
   }
 
   // cached
@@ -74,6 +79,23 @@ export class OasisService {
   setDetails(details: Detail[]): Detail[] {
     this.details = details;
     return details;
+  }
+
+  async fetchAllGroups(): Promise<Group[]> {
+    return this.fetchPaged('groups/');
+  }
+
+  // cached
+  async getGroups(refresh = false): Promise<Group[]> {
+    if (refresh || !this.groups) {
+      this.groups = await this.fetchAllGroups();
+    }
+    return this.groups;
+  }
+
+  setGroups(groups: Group[]): Group[] {
+    this.groups = groups;
+    return groups;
   }
 }
 
@@ -89,11 +111,37 @@ export interface Detail {
   import_date: null | string;
 }
 
-export interface DetailResponse {
+export interface Group {
+  url: string;
+  name: string;
+  index: number;
+  template_key: string;
+  group_type: string;
+  case_tab: string;
+  section: string;
+  special_function: string;
+  allow_other: boolean;
+  required: boolean;
+  auto_copy: boolean;
+  report_summary: boolean;
+  searchable: boolean;
+  display_in_relationships: boolean;
+  display_in_sidebar: boolean;
+  display_in_barcode: boolean;
+  alternate_label: string;
+  quick_add_members: boolean;
+  disabled: boolean;
+  hide_by_default: boolean;
+  import_id: string;
+  import_date: null | string;
+  export_filter: boolean;
+}
+
+export interface PagedResponse<T> {
   count: number;
   next: string | null;
   previous: string | null;
-  results: Detail[];
+  results: T[];
 }
 
 export interface Case {
