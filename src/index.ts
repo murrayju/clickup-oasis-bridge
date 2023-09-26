@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import express, { NextFunction, type Request, type Response } from 'express';
 import Router from 'express-promise-router';
 import ngrok from 'ngrok';
+import fs from 'fs';
 
 import {
   ClickUpService,
@@ -18,8 +19,13 @@ if (error) {
   process.exit(1);
 }
 
-const { CLICKUP_API_TOKEN, CLICKUP_TEAM_ID, OASIS_API_TOKEN, OASIS_BASE_URL } =
-  process.env;
+const {
+  CLICKUP_API_TOKEN,
+  CLICKUP_TEAM_ID,
+  OASIS_API_TOKEN,
+  OASIS_BASE_URL,
+  USE_CACHED_DETAILS,
+} = process.env;
 if (!CLICKUP_API_TOKEN) {
   throw new Error('Missing CLICKUP_API_TOKEN in .env');
 }
@@ -34,6 +40,11 @@ if (!OASIS_BASE_URL) {
 }
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
+
+const details = USE_CACHED_DETAILS
+  ? oasisService.setDetails((await import('./fixtures/details')).details)
+  : await oasisService.getDetails();
+console.info(`Loaded ${details.length} Details`);
 
 const port = parseInt(process.env.PORT || '80', 10);
 const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));

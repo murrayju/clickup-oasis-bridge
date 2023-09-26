@@ -6,6 +6,7 @@ interface Options extends RequestInit {
 export class OasisService {
   private baseUrl: string;
   private token: string;
+  private details: Detail[] | null = null;
 
   constructor(token: string, baseUrl: string) {
     this.token = token;
@@ -16,7 +17,9 @@ export class OasisService {
     route: string,
     { formData: passedFormData, json, ...options }: Options = {},
   ): Promise<T> {
-    const url = `${this.baseUrl}${route}`;
+    const url = route.startsWith(this.baseUrl)
+      ? route
+      : `${this.baseUrl}${route}`;
     console.info(`${options?.method ?? 'GET'} ${url}`);
 
     let formData;
@@ -48,6 +51,49 @@ export class OasisService {
 
     return res.json() as Promise<T>;
   }
+
+  async fetchAllDetails(): Promise<Detail[]> {
+    let next: string | null = 'details/';
+    const details: Detail[] = [];
+    do {
+      const response: DetailResponse = await this.fetch(next);
+      details.push(...response.results);
+      next = response.next;
+    } while (next);
+    return details;
+  }
+
+  // cached
+  async getDetails(refresh = false): Promise<Detail[]> {
+    if (refresh || !this.details) {
+      this.details = await this.fetchAllDetails();
+    }
+    return this.details;
+  }
+
+  setDetails(details: Detail[]): Detail[] {
+    this.details = details;
+    return details;
+  }
+}
+
+export interface Detail {
+  url: string;
+  group: string;
+  name: string;
+  index: number;
+  template_key: string;
+  other_input: boolean;
+  show_groups: string[];
+  import_id: string;
+  import_date: null | string;
+}
+
+export interface DetailResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Detail[];
 }
 
 export interface Case {
