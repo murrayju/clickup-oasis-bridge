@@ -7,7 +7,9 @@ export class OasisService {
   private baseUrl: string;
   private token: string;
   private groups: Group[] | null = null;
+  private _groupMap: Map<string, Group> = new Map();
   private details: Detail[] | null = null;
+  private _detailsMap: Map<string, Detail[]> = new Map();
 
   constructor(token: string, baseUrl: string) {
     this.token = token;
@@ -70,14 +72,31 @@ export class OasisService {
 
   // cached
   async getDetails(refresh = false): Promise<Detail[]> {
+    if (refresh) {
+      this._detailsMap.clear();
+    }
     if (refresh || !this.details) {
       this.details = await this.fetchAllDetails();
     }
     return this.details;
   }
 
+  get detailsMap(): Map<string, Detail[]> {
+    if (!this._detailsMap.size && this.details) {
+      for (const detail of this.details) {
+        const detailName = detail.name.toLowerCase();
+        if (!this._detailsMap.has(detailName)) {
+          this._detailsMap.set(detailName, []);
+        }
+        this._detailsMap.get(detailName)!.push(detail);
+      }
+    }
+    return this._detailsMap;
+  }
+
   setDetails(details: Detail[]): Detail[] {
     this.details = details;
+    this._detailsMap.clear();
     return details;
   }
 
@@ -87,15 +106,55 @@ export class OasisService {
 
   // cached
   async getGroups(refresh = false): Promise<Group[]> {
+    if (refresh) {
+      this._groupMap.clear();
+    }
     if (refresh || !this.groups) {
       this.groups = await this.fetchAllGroups();
     }
     return this.groups;
   }
 
+  get groupMap(): Map<string, Group> {
+    if (!this._groupMap.size && this.groups) {
+      for (const group of this.groups) {
+        this._groupMap.set(group.name.toLowerCase(), group);
+      }
+    }
+    return this._groupMap;
+  }
+
   setGroups(groups: Group[]): Group[] {
     this.groups = groups;
+    this._groupMap.clear();
     return groups;
+  }
+
+  async addCaseDetail(c: Case, groupName: string, detailName: string | null) {
+    if (!detailName) {
+      throw new Error(`No detail name provided`);
+    }
+    await this.getGroups();
+    const group = this.groupMap.get(groupName.toLowerCase());
+    if (!group) {
+      throw new Error(`Group not found: ${groupName}`);
+    }
+    await this.getDetails();
+    const details = this.detailsMap.get(detailName.toLowerCase());
+    if (!details) {
+      throw new Error(`No details found matching: ${detailName}`);
+    }
+    const detail = details.find((d) => d.group === group.url);
+    if (!detail) {
+      throw new Error(`Detail '${detailName}' not found in group ${groupName}`);
+    }
+    return this.fetch('case_details/', {
+      method: 'POST',
+      json: {
+        case: c.url,
+        detail: detail.url,
+      },
+    });
   }
 }
 

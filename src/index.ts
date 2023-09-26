@@ -121,15 +121,29 @@ router.post(
           (task.getNumber('Gross Household Income (Monthly)', 'currency') ??
             0) * 12,
       };
-      console.log('posting data:', data);
-
+      console.debug('Creating case with data:', data);
       // The trailing slash on `cases/` is important
-      const result: Case = await oasisService.fetch('cases/', {
+      const newCase: Case = await oasisService.fetch('cases/', {
         json: data,
         method: 'POST',
       });
-      console.info(`Case created: ${result.url}`);
-      console.info(`Case: ${JSON.stringify(result, null, 2)}`);
+      console.info(`Case created: ${newCase.url}`);
+      console.debug(`Case: ${JSON.stringify(newCase, null, 2)}`);
+
+      // Demographics
+      for (const [groupName, detailName] of [
+        ['Ethnicity', task.getDropdownString('Ethnicity')],
+      ] as const) {
+        try {
+          await oasisService.addCaseDetail(newCase, groupName, detailName);
+          console.debug(`Set demographic(${groupName}, ${detailName})`);
+        } catch (err) {
+          console.error(
+            `Failed to set demographic(${groupName}, ${detailName})`,
+            err,
+          );
+        }
+      }
     }
 
     res.sendStatus(200);
