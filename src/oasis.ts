@@ -130,6 +130,17 @@ export class OasisService {
     return groups;
   }
 
+  async addPhoneNumber(c: Case, description: string, number: string) {
+    return this.fetch('phone_numbers/', {
+      method: 'POST',
+      json: {
+        case: c.url,
+        description,
+        number,
+      },
+    });
+  }
+
   async addCaseDetails(
     c: Case,
     groupName: string,

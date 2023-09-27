@@ -137,6 +137,25 @@ router.post(
         // clickup is quick to retry if we take too long
         res.sendStatus(200);
 
+        // Phone number
+        const phoneDesc = task.getDropdownString('Phone Number');
+        const phoneNum = task.getString('Phone Number', 'phone');
+        if (phoneDesc && phoneNum) {
+          try {
+            await oasisService.addPhoneNumber(newCase, phoneDesc, phoneNum);
+            console.debug(
+              `c[${newCase.id}] set phone number(${phoneDesc}, ${phoneNum})`,
+            );
+          } catch (err) {
+            console.error(
+              `c[${newCase.id}] failed to set phone number(${phoneDesc}, ${phoneNum})`,
+              err,
+            );
+          }
+        } else {
+          console.warn(`c[${newCase.id}] missing phone number`);
+        }
+
         // Demographics
         for (const groupName of Object.values(OasisGroup)) {
           const detailName = mapDemographic(groupName, task);
