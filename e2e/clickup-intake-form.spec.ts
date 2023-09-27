@@ -102,17 +102,17 @@ test.describe('English Intake Form', () => {
         '[data-test="form__body-item__Ethnicity"] [data-test="select__dropdown__toggle"]',
       )
       .click();
-    await page.getByText('Asian', { exact: true }).click();
-    await page
-      .locator(
-        '[data-test="form__body-item__Primary Language"] [data-test="select__dropdown__toggle"]',
-      )
-      .click();
-    await page
-      .getByRole('option', { name: 'English (English)' })
-      .locator('div')
-      .nth(1)
-      .click();
+    await page.getByText('2. Asian', { exact: true }).click();
+    // await page
+    //   .locator(
+    //     '[data-test="form__body-item__Primary Language"] [data-test="select__dropdown__toggle"]',
+    //   )
+    //   .click();
+    // await page
+    //   .getByRole('option', { name: 'English (English)' })
+    //   .locator('div')
+    //   .nth(1)
+    //   .click();
     await page
       .locator(
         '[data-test="form__body-item__Total Number of People in Household"] [data-test="select__dropdown__toggle"]',

@@ -130,14 +130,16 @@ interface BaseField {
   type_config: Record<string, unknown>;
 }
 
+interface LabelsOption {
+  id: string;
+  label: string;
+  color: string | null;
+}
+
 interface LabelsField extends BaseField {
   type: 'labels';
   type_config: {
-    options: {
-      id: string;
-      label: string;
-      color: string | null;
-    }[];
+    options: LabelsOption[];
   };
   value: string[];
 }
@@ -271,7 +273,7 @@ export class ClickUpTask {
       if (type && field.type !== type) {
         continue;
       }
-      if (field.name === name) {
+      if (field.id === name || field.name === name) {
         return field;
       }
       if (field.name.startsWith(name) && !prefixMatch) {
@@ -291,6 +293,20 @@ export class ClickUpTask {
 
   getDropdownString(name: string): string | null {
     return this.getDropdownOption(name)?.name || null;
+  }
+
+  getLabelsOptions(name: string): LabelsOption[] | null {
+    const field = this.getField(name, 'labels');
+    if (field?.value == null || field.type !== 'labels') {
+      return null;
+    }
+    return field.value
+      .map((v) => field.type_config.options.find((o) => o.id === v))
+      .filter((v): v is LabelsOption => !!v);
+  }
+
+  getLabelsStrings(name: string): string[] | null {
+    return this.getLabelsOptions(name)?.map((o) => o.label) || null;
   }
 
   getString(name: string, type?: string): string | null {

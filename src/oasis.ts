@@ -130,8 +130,12 @@ export class OasisService {
     return groups;
   }
 
-  async addCaseDetail(c: Case, groupName: string, detailName: string | null) {
-    if (!detailName) {
+  async addCaseDetails(
+    c: Case,
+    groupName: string,
+    detailNames: string[] | string | null,
+  ): Promise<Detail[]> {
+    if (!detailNames) {
       throw new Error(`No detail name provided`);
     }
     await this.getGroups();
@@ -140,21 +144,32 @@ export class OasisService {
       throw new Error(`Group not found: ${groupName}`);
     }
     await this.getDetails();
-    const details = this.detailsMap.get(detailName.toLowerCase());
-    if (!details) {
-      throw new Error(`No details found matching: ${detailName}`);
+
+    const results: Detail[] = [];
+    for (const detailName of Array.isArray(detailNames)
+      ? detailNames
+      : [detailNames]) {
+      const details = this.detailsMap.get(detailName.toLowerCase());
+      if (!details) {
+        throw new Error(`No details found matching: ${detailName}`);
+      }
+      const detail = details.find((d) => d.group === group.url);
+      if (!detail) {
+        throw new Error(
+          `Detail '${detailName}' not found in group ${groupName}`,
+        );
+      }
+      results.push(
+        await this.fetch('case_details/', {
+          method: 'POST',
+          json: {
+            case: c.url,
+            detail: detail.url,
+          },
+        }),
+      );
     }
-    const detail = details.find((d) => d.group === group.url);
-    if (!detail) {
-      throw new Error(`Detail '${detailName}' not found in group ${groupName}`);
-    }
-    return this.fetch('case_details/', {
-      method: 'POST',
-      json: {
-        case: c.url,
-        detail: detail.url,
-      },
-    });
+    return results;
   }
 }
 

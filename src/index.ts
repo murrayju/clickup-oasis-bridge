@@ -11,7 +11,7 @@ import {
   ClickUpTask,
 } from './clickup';
 import { Case, OasisService } from './oasis';
-import { mapDemographic } from './demographics';
+import { OasisGroup, mapDemographic } from './demographics';
 
 const { error } = dotenv.config();
 if (error) {
@@ -98,55 +98,69 @@ router.post(
   // handle webhook request
   async (req: Request, res: Response) => {
     console.log('webhook received:', req.body.event);
-    if (req.body.event === 'taskCreated') {
-      const taskCreated: TaskCreatedEvent = req.body;
-      const task = new ClickUpTask(
-        await clickUpService.fetch(`task/${taskCreated.task_id}`),
-      );
-      console.info(`taskCreated: ${task.id}`);
 
-      const data = {
-        first_name: `${task.getString('First Name')}`,
-        last_name: `${task.getString('Last Name')}`,
-        date_of_birth: `${task.getDropdownString(
-          'Date of Birth Year',
-        )}-${task.getDropdownString(
-          'Date of Birth Month',
-        )}-${task.getDropdownString('Date of Birth Day')}`,
-        email: `${task.getString('Email')}`,
-        head_of_household: true,
-        street_address: `${task.getString('Address')}`,
-        street_city: `${task.getString('City')}`,
-        street_zip_code: `${task.getString('Zip Code')}`,
-        yearly_income:
-          (task.getNumber('Gross Household Income (Monthly)', 'currency') ??
-            0) * 12,
-      };
-      console.debug('Creating case with data:', data);
-      // The trailing slash on `cases/` is important
-      const newCase: Case = await oasisService.fetch('cases/', {
-        json: data,
-        method: 'POST',
-      });
-      console.info(`Case created: ${newCase.url}`);
-      console.debug(`Case: ${JSON.stringify(newCase, null, 2)}`);
+    switch (req.body.event) {
+      case 'taskCreated': {
+        const taskCreated: TaskCreatedEvent = req.body;
+        const task = new ClickUpTask(
+          await clickUpService.fetch(`task/${taskCreated.task_id}`),
+        );
+        console.info(`taskCreated: ${task.id}`);
 
-      // Demographics
-      for (const groupName of ['Ethnicity', 'Gender'] as const) {
-        const detailName = mapDemographic(groupName, task);
-        try {
-          await oasisService.addCaseDetail(newCase, groupName, detailName);
-          console.debug(`Set demographic(${groupName}, ${detailName})`);
-        } catch (err) {
-          console.error(
-            `Failed to set demographic(${groupName}, ${detailName})`,
-            err,
-          );
+        const data = {
+          first_name: `${task.getString('First Name')}`,
+          last_name: `${task.getString('Last Name')}`,
+          date_of_birth: `${task.getDropdownString(
+            'Date of Birth Year',
+          )}-${task.getDropdownString(
+            'Date of Birth Month',
+          )}-${task.getDropdownString('Date of Birth Day')}`,
+          email: `${task.getString('Email')}`,
+          head_of_household: true,
+          street_address: `${task.getString('Address')}`,
+          street_city: `${task.getString('City')}`,
+          street_zip_code: `${task.getString('Zip Code')}`,
+          yearly_income:
+            (task.getNumber('Gross Household Income (Monthly)', 'currency') ??
+              0) * 12,
+        };
+        console.debug(`t[${task.id}] creating case with data:`, data);
+        // The trailing slash on `cases/` is important
+        const newCase: Case = await oasisService.fetch('cases/', {
+          json: data,
+          method: 'POST',
+        });
+        console.info(`t[${task.id}] case created: ${newCase.url}`);
+        console.debug(`c[${newCase.id}] ${JSON.stringify(newCase, null, 2)}`);
+
+        // consider successful if we created a case
+        // clickup is quick to retry if we take too long
+        res.sendStatus(200);
+
+        // Demographics
+        for (const groupName of Object.values(OasisGroup)) {
+          const detailName = mapDemographic(groupName, task);
+          try {
+            await oasisService.addCaseDetails(newCase, groupName, detailName);
+            console.debug(
+              `c[${newCase.id}] set demographic(${groupName}, ${detailName})`,
+            );
+          } catch (err) {
+            console.error(
+              `c[${newCase.id}] failed to set demographic(${groupName}, ${detailName})`,
+              err,
+            );
+          }
         }
+        console.info(`c[${newCase.id}] job complete`);
+        break;
+      }
+      default: {
+        console.warn('unhandled event', req.body.event);
+        res.sendStatus(200);
+        break;
       }
     }
-
-    res.sendStatus(200);
   },
 );
 
