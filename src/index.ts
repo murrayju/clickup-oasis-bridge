@@ -153,7 +153,26 @@ router.post(
             );
           }
         } else {
-          console.warn(`c[${newCase.id}] missing phone number`);
+          console.info(`c[${newCase.id}] missing phone number`);
+        }
+
+        // Income
+        const income = task.getString(
+          'Gross Household Income (Monthly)',
+          'currency',
+        );
+        if (income) {
+          try {
+            await oasisService.addIncomeSource(newCase, income);
+            console.debug(`c[${newCase.id}] set income(${income})`);
+          } catch (err) {
+            console.error(
+              `c[${newCase.id}] failed to set income(${income})`,
+              err,
+            );
+          }
+        } else {
+          console.info(`c[${newCase.id}] income not specified`);
         }
 
         // Demographics

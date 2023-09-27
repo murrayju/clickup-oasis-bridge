@@ -317,6 +317,7 @@ export class ClickUpTask {
         field.type !== 'location' &&
         field.type !== 'date' &&
         field.type !== 'email' &&
+        field.type !== 'currency' &&
         field.type !== 'phone')
     ) {
       return null;

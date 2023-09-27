@@ -141,6 +141,23 @@ export class OasisService {
     });
   }
 
+  async addIncomeSource(
+    c: Case,
+    amount: string,
+    interval = 'month',
+    name = 'Unspecified',
+  ) {
+    return this.fetch('income_sources/', {
+      method: 'POST',
+      json: {
+        case: c.url,
+        amount,
+        interval,
+        name,
+      },
+    });
+  }
+
   async addCaseDetails(
     c: Case,
     groupName: string,
