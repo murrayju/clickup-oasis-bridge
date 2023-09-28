@@ -162,6 +162,7 @@ export class OasisService {
     c: Case,
     groupName: string,
     detailNames: string[] | string | null,
+    value?: string | null,
   ): Promise<Detail[]> {
     if (!detailNames) {
       throw new Error(`No detail name provided`);
@@ -193,6 +194,7 @@ export class OasisService {
           json: {
             case: c.url,
             detail: detail.url,
+            value,
           },
         }),
       );

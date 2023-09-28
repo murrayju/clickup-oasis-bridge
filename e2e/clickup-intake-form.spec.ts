@@ -89,7 +89,7 @@ test.describe('English Intake Form', () => {
       .fill('fake@email.com');
     await page
       .locator(
-        '[data-test="form__body-item__Gender \\(1-Female\\, 2-Male\\, 3-Transgender\\, 4-Non-binary\\, 5-Prefer to Self Describe\\)"] [data-test="select__dropdown__toggle"]',
+        '[data-test^="form__body-item__Gender"] [data-test="select__dropdown__toggle"]',
       )
       .click();
     await page
@@ -99,7 +99,7 @@ test.describe('English Intake Form', () => {
       .click();
     await page
       .locator(
-        '[data-test="form__body-item__Ethnicity"] [data-test="select__dropdown__toggle"]',
+        '[data-test^="form__body-item__Ethnicity"] [data-test="select__dropdown__toggle"]',
       )
       .click();
     await page.getByText('2. Asian', { exact: true }).click();

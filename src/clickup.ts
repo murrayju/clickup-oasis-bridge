@@ -43,23 +43,29 @@ export class ClickUpService {
 
 export interface ClickUpWebhook {
   id: string;
-  webhook: {
-    id: string;
-    userid: number;
-    team_id: number;
-    endpoint: string;
-    client_id: string;
-    events: string[];
-    task_id: string | null;
-    list_id: number | null;
-    folder_id: number | null;
-    space_id: number | null;
-    health: {
-      status: string;
-      fail_count: number;
-    };
-    secret: string;
+  userid: number;
+  team_id: number;
+  endpoint: string;
+  client_id: string;
+  events: string[];
+  task_id: string | null;
+  list_id: number | null;
+  folder_id: number | null;
+  space_id: number | null;
+  health: {
+    status: string;
+    fail_count: number;
   };
+  secret: string;
+}
+
+export interface ClickUpWebhookResponse {
+  id: string;
+  webhook: ClickUpWebhook;
+}
+
+export interface ClickUpWebhooksResponse {
+  webhooks: ClickUpWebhook[];
 }
 
 interface Status {

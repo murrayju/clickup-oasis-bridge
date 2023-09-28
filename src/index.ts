@@ -9,6 +9,8 @@ import {
   TaskCreatedEvent,
   type ClickUpWebhook,
   ClickUpTask,
+  ClickUpWebhookResponse,
+  ClickUpWebhooksResponse,
 } from './clickup';
 import { Case, OasisService } from './oasis';
 import { OasisGroup, mapDemographic } from './demographics';
@@ -26,6 +28,8 @@ const {
   OASIS_BASE_URL,
   USE_CACHED_DETAILS,
   USE_CACHED_GROUPS,
+  WEBHOOK_HEALTHCHECK_INTERVAL,
+  DELETE_EXISTING_WEBHOOKS,
 } = process.env;
 if (!CLICKUP_API_TOKEN) {
   throw new Error('Missing CLICKUP_API_TOKEN in .env');
@@ -41,6 +45,18 @@ if (!OASIS_BASE_URL) {
 }
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
+
+if (DELETE_EXISTING_WEBHOOKS) {
+  const { webhooks } = (await clickUpService.teamFetch(
+    `webhook`,
+  )) as ClickUpWebhooksResponse;
+  for (const webhook of webhooks) {
+    await clickUpService.fetch(`webhook/${webhook.id}`, {
+      method: 'DELETE',
+    });
+    console.info(`deleted webhook ${webhook.id}`);
+  }
+}
 
 const groups = USE_CACHED_GROUPS
   ? oasisService.setGroups((await import('./fixtures/groups')).groups)
@@ -62,8 +78,30 @@ const { webhook } = (await clickUpService.teamFetch('webhook', {
     endpoint: `${publicUrl}/webhook`,
     events: ['taskCreated'],
   },
-})) as ClickUpWebhook;
+})) as ClickUpWebhookResponse;
 console.info('registered webhook', webhook.id);
+
+if (WEBHOOK_HEALTHCHECK_INTERVAL) {
+  setInterval(
+    async () => {
+      try {
+        const { webhooks } = (await clickUpService.teamFetch(
+          `webhook`,
+        )) as ClickUpWebhooksResponse;
+        const health = webhooks?.find((w) => w.id === webhook.id)?.health;
+        if (!health) {
+          throw new Error('webhook not found');
+        }
+        console.info(
+          `webhook health check: ${health.status}, ${health.fail_count}`,
+        );
+      } catch (err) {
+        console.error('webhook health check failed:', err);
+      }
+    },
+    parseInt(WEBHOOK_HEALTHCHECK_INTERVAL, 10),
+  );
+}
 
 const app = express();
 const router = Router();
@@ -131,7 +169,8 @@ router.post(
           method: 'POST',
         });
         console.info(`t[${task.id}] case created: ${newCase.url}`);
-        console.debug(`c[${newCase.id}] ${JSON.stringify(newCase, null, 2)}`);
+        const cLog = (str: string) => `c[${newCase.id}] ${str}`;
+        console.debug(cLog(JSON.stringify(newCase, null, 2)));
 
         // consider successful if we created a case
         // clickup is quick to retry if we take too long
@@ -139,21 +178,24 @@ router.post(
 
         // Phone number
         const phoneDesc = task.getDropdownString('Phone Number');
-        const phoneNum = task.getString('Phone Number', 'phone');
-        if (phoneDesc && phoneNum) {
+        const phoneNumRaw = task.getString('Phone Number', 'phone');
+        if (phoneDesc && phoneNumRaw) {
+          // Format as expected if possible
+          const match = phoneNumRaw.match(/\+1 (\d{3}) (\d{3}) (\d{4})/);
+          const phoneNum = match
+            ? `${match[1]}-${match[2]}-${match[3]}`
+            : phoneNumRaw;
           try {
             await oasisService.addPhoneNumber(newCase, phoneDesc, phoneNum);
-            console.debug(
-              `c[${newCase.id}] set phone number(${phoneDesc}, ${phoneNum})`,
-            );
+            console.debug(cLog(`set phone number(${phoneDesc}, ${phoneNum})`));
           } catch (err) {
             console.error(
-              `c[${newCase.id}] failed to set phone number(${phoneDesc}, ${phoneNum})`,
+              cLog(`failed to set phone number(${phoneDesc}, ${phoneNum})`),
               err,
             );
           }
         } else {
-          console.info(`c[${newCase.id}] missing phone number`);
+          console.info(cLog('missing phone number'));
         }
 
         // Income
@@ -164,33 +206,31 @@ router.post(
         if (income) {
           try {
             await oasisService.addIncomeSource(newCase, income);
-            console.debug(`c[${newCase.id}] set income(${income})`);
+            console.debug(cLog(`set income(${income})`));
           } catch (err) {
-            console.error(
-              `c[${newCase.id}] failed to set income(${income})`,
-              err,
-            );
+            console.error(cLog(`failed to set income(${income})`), err);
           }
         } else {
-          console.info(`c[${newCase.id}] income not specified`);
+          console.info(cLog(`income not specified`));
         }
 
         // Demographics
         for (const groupName of Object.values(OasisGroup)) {
-          const detailName = mapDemographic(groupName, task);
+          const { detailNames, value } = mapDemographic(groupName, task);
+          const logStr = `set demographic(${groupName}, ${detailNames}, ${value})`;
           try {
-            await oasisService.addCaseDetails(newCase, groupName, detailName);
-            console.debug(
-              `c[${newCase.id}] set demographic(${groupName}, ${detailName})`,
+            await oasisService.addCaseDetails(
+              newCase,
+              groupName,
+              detailNames,
+              value,
             );
+            console.debug(cLog(logStr));
           } catch (err) {
-            console.error(
-              `c[${newCase.id}] failed to set demographic(${groupName}, ${detailName})`,
-              err,
-            );
+            console.error(cLog(`failed to ${logStr}`), err);
           }
         }
-        console.info(`c[${newCase.id}] job complete`);
+        console.info(cLog(`job complete`));
         break;
       }
       default: {
