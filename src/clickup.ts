@@ -1,11 +1,13 @@
 interface Options extends RequestInit {
   json?: Record<string, unknown>;
+  searchParams?: Record<string, string> | [string, string][];
 }
 
 export class ClickUpService {
   private baseUrl = 'https://api.clickup.com/api/v2/';
   private token: string;
   private teamId: string;
+  private customFieldsMap: Map<string, Field[]> = new Map();
 
   constructor(token: string, teamId: string) {
     this.token = token;
@@ -14,9 +16,11 @@ export class ClickUpService {
 
   async fetch<T>(
     route: string,
-    { json, ...options }: Options = {},
+    { searchParams, json, ...options }: Options = {},
   ): Promise<T> {
-    const url = `${this.baseUrl}${route}`;
+    const query =
+      (searchParams && new URLSearchParams(searchParams).toString()) || '';
+    const url = `${this.baseUrl}${route}${query ? `?${query}` : ''}`;
 
     console.info(`${options?.method ?? 'GET'} ${url}`);
     const res = await fetch(url, {
@@ -30,7 +34,16 @@ export class ClickUpService {
     });
 
     if (!res.ok) {
-      throw new Error(`ClickUp API error: ${res.status} ${res.statusText}`);
+      let text;
+      try {
+        text = await res.text();
+      } finally {
+        throw new Error(
+          `ClickUp API error: ${res.status} ${res.statusText}${
+            text ? `\n${text}` : ''
+          }`,
+        );
+      }
     }
 
     return res.json() as Promise<T>;
@@ -38,6 +51,19 @@ export class ClickUpService {
 
   async teamFetch(route: string, options?: Options) {
     return this.fetch(`team/${this.teamId}/${route}`, options);
+  }
+
+  async getCustomFields(listId: string, force = false): Promise<Field[]> {
+    if (!force && this.customFieldsMap.has(listId)) {
+      return this.customFieldsMap.get(listId)!;
+    }
+
+    const { fields } = await this.fetch<{
+      fields: Field[];
+    }>(`list/${listId}/field`);
+
+    this.customFieldsMap.set(listId, fields);
+    return fields;
   }
 }
 

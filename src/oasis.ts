@@ -1,3 +1,5 @@
+import { ClickUpService, ClickUpTask } from './clickup';
+
 interface Options extends RequestInit {
   formData?: Record<string, string>;
   json?: Record<string, unknown>;
@@ -45,10 +47,15 @@ export class OasisService {
     });
 
     if (!res.ok) {
+      let text;
       try {
-        console.error(await res.text());
+        text = await res.text();
       } finally {
-        throw new Error(`Oasis API error: ${res.status} ${res.statusText}`);
+        throw new Error(
+          `Oasis API error: ${res.status} ${res.statusText}${
+            text ? `\n${text}` : ''
+          }`,
+        );
       }
     }
 
@@ -201,6 +208,163 @@ export class OasisService {
     }
     return results;
   }
+
+  async importClickUpTask(
+    clickUpService: ClickUpService,
+    task: ClickUpTask,
+    caseCallback?: (c: Case) => void,
+  ): Promise<Case> {
+    try {
+      const dobY = task.getDropdownString('hoh_dob_y');
+      const dobM = task.getDropdownString('hoh_dob_m');
+      const dobD = task.getDropdownString('hoh_dob');
+      const data = {
+        first_name: `${task.getString('hoh_fn')}`,
+        last_name: `${task.getString('hoh_lname')}`,
+        ...(dobY
+          ? {
+              date_of_birth: `${dobY}${
+                dobM ? `-${dobM}${dobD ? `-${dobD}` : ''}` : ''
+              }`,
+            }
+          : {}),
+        email: `${task.getString('hoh_email')}`,
+        head_of_household: true,
+        street_address: `${task.getString('hoh_add') || ''}`,
+        street_city: `${task.getString('hoh_city') || ''}`,
+        street_zip_code: `${task.getString('hoh_zip') || ''}`,
+      };
+      console.debug(`t[${task.id}] creating case with data:`, data);
+      // The trailing slash on `cases/` is important
+      const newCase: Case = await this.fetch('cases/', {
+        json: data,
+        method: 'POST',
+      });
+      console.info(`t[${task.id}] case created: ${newCase.url}`);
+      const cLog = (str: string) => `c[${newCase.id}] ${str}`;
+      console.debug(cLog(JSON.stringify(newCase, null, 2)));
+
+      caseCallback?.(newCase);
+
+      // Set case url on clickup task
+      const clickUpFields = await clickUpService.getCustomFields(
+        task.task.list.id,
+      );
+      const urlField = clickUpFields.find((f) => f.name === 'case_url');
+      if (urlField?.id) {
+        const webUrl = newCase.url.replace(/\/api\/v1/, '');
+        await clickUpService.fetch(`task/${task.id}/field/${urlField.id}`, {
+          method: 'POST',
+          json: {
+            value: webUrl,
+          },
+        });
+        console.info(cLog(`set case url(${webUrl})`));
+      }
+
+      // Phone number
+      const phoneDesc = task.getDropdownString('hoh_phone_type');
+      const phoneNumRaw = task.getString('hoh_phone_number', 'phone');
+      if (phoneDesc && phoneNumRaw) {
+        // Format as expected if possible
+        const match = phoneNumRaw.match(/\+1 (\d{3}) (\d{3}) (\d{4})/);
+        const phoneNum = match
+          ? `${match[1]}-${match[2]}-${match[3]}`
+          : phoneNumRaw;
+        try {
+          await this.addPhoneNumber(newCase, phoneDesc, phoneNum);
+          console.debug(cLog(`set phone number(${phoneDesc}, ${phoneNum})`));
+        } catch (err) {
+          console.error(
+            cLog(`failed to set phone number(${phoneDesc}, ${phoneNum})`),
+            err,
+          );
+        }
+      } else {
+        console.info(cLog('missing phone number'));
+      }
+
+      // Income
+      const income = task.getString('hoh_income', 'currency');
+      if (income) {
+        try {
+          await this.addIncomeSource(newCase, income);
+          console.debug(cLog(`set income(${income})`));
+        } catch (err) {
+          console.error(cLog(`failed to set income(${income})`), err);
+        }
+      } else {
+        console.info(cLog(`income not specified`));
+      }
+
+      // Demographics
+      for (const groupName of Object.values(OasisGroup)) {
+        const { detailNames, value } = mapDemographic(groupName, task);
+        const logStr = `set demographic(${groupName}, ${detailNames}, ${value})`;
+        try {
+          await this.addCaseDetails(newCase, groupName, detailNames, value);
+          console.debug(cLog(logStr));
+        } catch (err) {
+          console.error(cLog(`failed to ${logStr}`), err);
+        }
+      }
+
+      // set task status
+      await clickUpService.fetch(`task/${task.id}`, {
+        method: 'PUT',
+        json: {
+          status: 'IN OASIS',
+        },
+      });
+
+      console.info(cLog(`job complete`));
+      return newCase;
+    } catch (err) {
+      // set task status
+      await clickUpService.fetch(`task/${task.id}`, {
+        method: 'PUT',
+        json: {
+          status: 'STUCK',
+        },
+      });
+      await clickUpService.fetch(`task/${task.id}/comment`, {
+        method: 'POST',
+        json: {
+          comment: [
+            {
+              text: `Failed to import into OASIS:\n`,
+            },
+            ...(err as Error).message.split('\n').reduce((lines, text) => {
+              lines.push({ text });
+              lines.push({
+                text: '\n',
+                attributes: { 'code-block': { 'code-block': 'plain' } },
+              });
+              return lines;
+            }, [] as any[]),
+          ],
+        },
+      });
+      console.error(`job failed`, err);
+      throw err;
+    }
+  }
+
+  async importClickUpTaskById(
+    clickUpService: ClickUpService,
+    taskId: string,
+    caseCallback?: (c: Case) => void,
+  ): Promise<Case> {
+    const task = new ClickUpTask(await clickUpService.fetch(`task/${taskId}`));
+    return this.importClickUpTask(clickUpService, task, caseCallback);
+  }
+}
+
+export enum OasisGroup {
+  gender = 'Gender',
+  ethnicity = 'Ethnicity',
+  additionalQuestions = 'Additional Questions',
+  proxy = 'Permanent Proxy (optional)',
 }
 
 export interface Detail {
@@ -291,3 +455,77 @@ export interface Case {
   relationship_set: null[];
   reverse_relationship_set: null[];
 }
+
+export interface DemographicInfo {
+  detailNames: string[] | string | null;
+  value?: string | null;
+}
+
+export const mapDemographic = (
+  oasisGroup: OasisGroup,
+  task: ClickUpTask,
+): DemographicInfo => {
+  switch (oasisGroup) {
+    case OasisGroup.gender: {
+      const taskVal = task.getDropdownString('hoh_gen');
+      return {
+        detailNames:
+          {
+            1: 'Female',
+            2: 'Male',
+            3: 'Transgender',
+            4: 'Non-binary',
+            5: 'Other',
+          }[taskVal?.[0] || ''] || null,
+      };
+    }
+    case OasisGroup.additionalQuestions: {
+      const taskValues = task.getLabelsStrings('hoh_demog');
+      if (!taskValues) {
+        return { detailNames: null };
+      }
+      return {
+        detailNames: taskValues
+          .map(
+            (taskVal) =>
+              ({
+                1: 'Disabled',
+                2: 'Homeless',
+                3: 'Veteran',
+                4: 'Active Military',
+              })[taskVal?.[0] || ''] || null,
+          )
+          .filter((v): v is string => !!v),
+      };
+    }
+    case OasisGroup.ethnicity: {
+      const taskVal = task.getDropdownString('hoh_eth');
+      return {
+        detailNames:
+          {
+            1: 'African-American/Black',
+            2: 'Asian',
+            3: 'Caucasian/White',
+            4: 'Hispanic/Latinx',
+            5: 'Native American/Native Alaskan',
+            6: 'Native Hawaiian/Pacific Islander',
+            7: 'Multi-race (2 or more)',
+            8: 'Other',
+          }[taskVal?.[0] || ''] || null,
+      };
+    }
+    case OasisGroup.proxy: {
+      return {
+        detailNames: 'Other',
+        value: task.getString('hoh_proxy'),
+      };
+    }
+    default: {
+      // @ts-expect-error OasisGroup should be exhaustive
+      console.error(`Unmapped OasisGroup: ${oasisGroup.toString()}`);
+      return {
+        detailNames: task.getDropdownString(oasisGroup),
+      };
+    }
+  }
+};

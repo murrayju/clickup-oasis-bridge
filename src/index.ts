@@ -7,13 +7,12 @@ import ngrok from 'ngrok';
 import {
   ClickUpService,
   TaskCreatedEvent,
-  type ClickUpWebhook,
-  ClickUpTask,
   ClickUpWebhookResponse,
   ClickUpWebhooksResponse,
+  Task,
+  ClickUpTask,
 } from './clickup';
-import { Case, OasisService } from './oasis';
-import { OasisGroup, mapDemographic } from './demographics';
+import { OasisService } from './oasis';
 
 const { error } = dotenv.config();
 if (error) {
@@ -24,12 +23,15 @@ if (error) {
 const {
   CLICKUP_API_TOKEN,
   CLICKUP_TEAM_ID,
+  CLICKUP_LIST_ID,
+  CLICKUP_POLL_INTERVAL,
   OASIS_API_TOKEN,
   OASIS_BASE_URL,
   USE_CACHED_DETAILS,
   USE_CACHED_GROUPS,
   WEBHOOK_HEALTHCHECK_INTERVAL,
   DELETE_EXISTING_WEBHOOKS,
+  IMPORT_TEST_CASE_AND_EXIT,
 } = process.env;
 if (!CLICKUP_API_TOKEN) {
   throw new Error('Missing CLICKUP_API_TOKEN in .env');
@@ -68,6 +70,14 @@ const details = USE_CACHED_DETAILS
   : await oasisService.getDetails();
 console.info(`Loaded ${details.length} Details`);
 
+if (IMPORT_TEST_CASE_AND_EXIT) {
+  await oasisService.importClickUpTaskById(
+    clickUpService,
+    IMPORT_TEST_CASE_AND_EXIT,
+  );
+  process.exit(0);
+}
+
 const port = parseInt(process.env.PORT || '80', 10);
 const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
 console.info('Using public URL:', publicUrl);
@@ -81,8 +91,9 @@ const { webhook } = (await clickUpService.teamFetch('webhook', {
 })) as ClickUpWebhookResponse;
 console.info('registered webhook', webhook.id);
 
+let healthInterval: NodeJS.Timeout | null = null;
 if (WEBHOOK_HEALTHCHECK_INTERVAL) {
-  setInterval(
+  healthInterval = setInterval(
     async () => {
       try {
         const { webhooks } = (await clickUpService.teamFetch(
@@ -99,7 +110,47 @@ if (WEBHOOK_HEALTHCHECK_INTERVAL) {
         console.error('webhook health check failed:', err);
       }
     },
-    parseInt(WEBHOOK_HEALTHCHECK_INTERVAL, 10),
+    parseInt(WEBHOOK_HEALTHCHECK_INTERVAL, 10) * 1000,
+  );
+}
+
+let pollInterval: NodeJS.Timeout | null = null;
+let processing = false;
+if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
+  pollInterval = setInterval(
+    async () => {
+      if (processing) {
+        console.warn('still processing from previous interval');
+        return;
+      }
+      try {
+        const { tasks } = await clickUpService.fetch<{ tasks: Task[] }>(
+          `list/${CLICKUP_LIST_ID}/task`,
+          {
+            searchParams: {
+              'statuses[]': 'TO-DO',
+            },
+          },
+        );
+        console.info(`found ${tasks.length} task(s) to process`);
+        for (const task of tasks) {
+          console.info(`processing task ${task.id}`);
+          try {
+            await oasisService.importClickUpTask(
+              clickUpService,
+              new ClickUpTask(task),
+            );
+          } catch (err) {
+            // already logged
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        processing = false;
+      }
+    },
+    parseInt(CLICKUP_POLL_INTERVAL, 10) * 1000,
   );
 }
 
@@ -140,97 +191,13 @@ router.post(
     switch (req.body.event) {
       case 'taskCreated': {
         const taskCreated: TaskCreatedEvent = req.body;
-        const task = new ClickUpTask(
-          await clickUpService.fetch(`task/${taskCreated.task_id}`),
-        );
-        console.info(`taskCreated: ${task.id}`);
-
-        const data = {
-          first_name: `${task.getString('First Name')}`,
-          last_name: `${task.getString('Last Name')}`,
-          date_of_birth: `${task.getDropdownString(
-            'Date of Birth Year',
-          )}-${task.getDropdownString(
-            'Date of Birth Month',
-          )}-${task.getDropdownString('Date of Birth Day')}`,
-          email: `${task.getString('Email')}`,
-          head_of_household: true,
-          street_address: `${task.getString('Address')}`,
-          street_city: `${task.getString('City')}`,
-          street_zip_code: `${task.getString('Zip Code')}`,
-          yearly_income:
-            (task.getNumber('Gross Household Income (Monthly)', 'currency') ??
-              0) * 12,
-        };
-        console.debug(`t[${task.id}] creating case with data:`, data);
-        // The trailing slash on `cases/` is important
-        const newCase: Case = await oasisService.fetch('cases/', {
-          json: data,
-          method: 'POST',
+        const taskId = taskCreated.task_id;
+        console.info(`taskCreated: ${taskId}`);
+        await oasisService.importClickUpTaskById(clickUpService, taskId, () => {
+          // consider successful if we created a case
+          // clickup retries webhooks if we don't respond in 7 seconds
+          res.sendStatus(200);
         });
-        console.info(`t[${task.id}] case created: ${newCase.url}`);
-        const cLog = (str: string) => `c[${newCase.id}] ${str}`;
-        console.debug(cLog(JSON.stringify(newCase, null, 2)));
-
-        // consider successful if we created a case
-        // clickup is quick to retry if we take too long
-        res.sendStatus(200);
-
-        // Phone number
-        const phoneDesc = task.getDropdownString('Phone Number');
-        const phoneNumRaw = task.getString('Phone Number', 'phone');
-        if (phoneDesc && phoneNumRaw) {
-          // Format as expected if possible
-          const match = phoneNumRaw.match(/\+1 (\d{3}) (\d{3}) (\d{4})/);
-          const phoneNum = match
-            ? `${match[1]}-${match[2]}-${match[3]}`
-            : phoneNumRaw;
-          try {
-            await oasisService.addPhoneNumber(newCase, phoneDesc, phoneNum);
-            console.debug(cLog(`set phone number(${phoneDesc}, ${phoneNum})`));
-          } catch (err) {
-            console.error(
-              cLog(`failed to set phone number(${phoneDesc}, ${phoneNum})`),
-              err,
-            );
-          }
-        } else {
-          console.info(cLog('missing phone number'));
-        }
-
-        // Income
-        const income = task.getString(
-          'Gross Household Income (Monthly)',
-          'currency',
-        );
-        if (income) {
-          try {
-            await oasisService.addIncomeSource(newCase, income);
-            console.debug(cLog(`set income(${income})`));
-          } catch (err) {
-            console.error(cLog(`failed to set income(${income})`), err);
-          }
-        } else {
-          console.info(cLog(`income not specified`));
-        }
-
-        // Demographics
-        for (const groupName of Object.values(OasisGroup)) {
-          const { detailNames, value } = mapDemographic(groupName, task);
-          const logStr = `set demographic(${groupName}, ${detailNames}, ${value})`;
-          try {
-            await oasisService.addCaseDetails(
-              newCase,
-              groupName,
-              detailNames,
-              value,
-            );
-            console.debug(cLog(logStr));
-          } catch (err) {
-            console.error(cLog(`failed to ${logStr}`), err);
-          }
-        }
-        console.info(cLog(`job complete`));
         break;
       }
       default: {
@@ -254,6 +221,12 @@ const server = app.listen(port, () => {
 // delete webhook on process exit
 process.on('SIGINT', async () => {
   console.info('shutting down');
+  if (healthInterval) {
+    clearInterval(healthInterval);
+  }
+  if (pollInterval) {
+    clearInterval(pollInterval);
+  }
   server.close();
   try {
     await clickUpService.fetch(`webhook/${webhook.id}`, {
