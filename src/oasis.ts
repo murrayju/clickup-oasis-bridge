@@ -504,6 +504,7 @@ export const mapDemographic = (
             4: 'Non-binary',
             5: 'Other',
           }[taskVal?.[0] || ''] || null,
+        value: task.getString('hoh_gen_other'),
       };
     }
     case OasisGroup.additionalQuestions: {
@@ -559,6 +560,7 @@ export const mapDemographic = (
             7: 'Multi-race (2 or more)',
             8: 'Other',
           }[taskVal?.[0] || ''] || null,
+        value: task.getString('hoh_eth_other'),
       };
     }
     case OasisGroup.language: {
