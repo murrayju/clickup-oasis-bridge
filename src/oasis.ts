@@ -279,6 +279,22 @@ export class OasisService {
       jLog(`HoH case created: ${hohUrl}`);
       log.debug(JSON.stringify(hohCase, null, 2));
 
+      // Record a note on the case
+      try {
+        await this.fetch('notes/', {
+          method: 'POST',
+          json: {
+            case: hohCase.url,
+            description: `Imported from ClickUp task ${task.task.url}`,
+            entry_agent: hohCase.entry_agent,
+            mod_agent: hohCase.mod_agent,
+          },
+        });
+        log.info(`added case note`);
+      } catch (err) {
+        jLog(`Failed to add case note`, err as Error);
+      }
+
       // Set case url on clickup task
       const clickUpFields = await clickUpService.getCustomFields(
         task.task.list.id,
@@ -363,6 +379,22 @@ export class OasisService {
           jLog(`HHM ${n} case created: ${hhmUrl}`);
           log.debug(JSON.stringify(hhmCase, null, 2));
 
+          // Record a note on the case
+          try {
+            await this.fetch('notes/', {
+              method: 'POST',
+              json: {
+                case: hhmCase.url,
+                description: `Imported from ClickUp task ${task.task.url}`,
+                entry_agent: hhmCase.entry_agent,
+                mod_agent: hhmCase.mod_agent,
+              },
+            });
+            log.info(`added case note`);
+          } catch (err) {
+            jLog(`Failed to add case note - HHM ${n}`, err as Error);
+          }
+
           // Demographics
           for (const groupName of [OasisGroup.ethnicity, OasisGroup.gender]) {
             const { detailNames, value } = mapDemographic(
@@ -388,6 +420,7 @@ export class OasisService {
                 from_case: hohCase.url,
                 to_case: hhmCase.url,
                 relationship,
+                dependent: true,
               },
             });
             log.info(`set relationship(${relationship}) - hhm_${n}`);
