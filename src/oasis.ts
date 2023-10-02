@@ -173,7 +173,7 @@ export class OasisService {
   async addCaseDetails(
     c: Case,
     groupName: string,
-    detailNames: string[] | string | null,
+    detailNames: string[] | string,
     value?: string | null,
   ): Promise<Detail[]> {
     if (!detailNames) {
@@ -348,6 +348,10 @@ export class OasisService {
       // Demographics
       for (const groupName of Object.values(OasisGroup)) {
         const { detailNames, value } = mapDemographic(groupName, task);
+        if (!detailNames) {
+          log.debug(`no ${groupName} specified`);
+          continue;
+        }
         const logStr = `set demographic(${groupName}, ${detailNames}, ${value})`;
         try {
           await this.addCaseDetails(hohCase, groupName, detailNames, value);
@@ -402,6 +406,10 @@ export class OasisService {
               task,
               `hhm_${n}_`,
             );
+            if (!detailNames) {
+              log.debug(`no ${groupName} specified`);
+              continue;
+            }
             const logStr = `set demographic(${groupName}, ${detailNames}, ${value}) - hhm_${n}`;
             try {
               await this.addCaseDetails(hhmCase, groupName, detailNames, value);
