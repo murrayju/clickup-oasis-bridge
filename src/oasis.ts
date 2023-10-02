@@ -255,6 +255,12 @@ export class OasisService {
       if (existingCase) {
         throw new Error(`Task already has case: ${existingCase}`);
       }
+      const address = {
+        street_address: task.getString('hoh_add') || '',
+        street_apt_number: task.getString('hoh_apt') || '',
+        street_city: task.getString('hoh_city') || '',
+        street_zip_code: task.getString('hoh_zip') || '',
+      };
       const hohCase = await this.createCase({
         first_name: task.getString('hoh_fn') || '',
         last_name: task.getString('hoh_ln') || '',
@@ -266,10 +272,7 @@ export class OasisService {
           ) || '',
         email: task.getString('hoh_email') || '',
         head_of_household: true,
-        street_address: task.getString('hoh_add') || '',
-        street_apt_number: task.getString('hoh_apt') || '',
-        street_city: task.getString('hoh_city') || '',
-        street_zip_code: task.getString('hoh_zip') || '',
+        ...address,
       });
       log = log.child({ c: hohCase.id });
       const hohUrl = caseToUrl(hohCase);
@@ -335,6 +338,63 @@ export class OasisService {
           log.info(logStr);
         } catch (err) {
           jLog(`failed to ${logStr}`, err as Error);
+        }
+      }
+
+      // additional household members
+      const numInHouseholdStr = task.getDropdownString('num_in_household');
+      const numInHousehold =
+        (numInHouseholdStr && parseInt(numInHouseholdStr, 10)) || 1;
+      if (numInHousehold > 1) {
+        for (let n = 1; n < numInHousehold; n++) {
+          const hhmCase = await this.createCase({
+            first_name: task.getString(`hhm_${n}_fn`) || '',
+            last_name: task.getString(`hhm_${n}_ln`) || '',
+            date_of_birth: new Date(
+              parseInt(task.getString(`hhm_${n}_dob`) || '', 10),
+            )
+              .toISOString()
+              .split('T')[0],
+            head_of_household: false,
+            household: hohCase.household,
+            ...address,
+          });
+          const hhmUrl = caseToUrl(hhmCase);
+          jLog(`HHM ${n} case created: ${hhmUrl}`);
+          log.debug(JSON.stringify(hhmCase, null, 2));
+          console.log(JSON.stringify(hhmCase, null, 2));
+
+          // Demographics
+          for (const groupName of [OasisGroup.ethnicity, OasisGroup.gender]) {
+            const { detailNames, value } = mapDemographic(
+              groupName,
+              task,
+              `hhm_${n}_`,
+            );
+            const logStr = `set demographic(${groupName}, ${detailNames}, ${value}) - hhm_${n}`;
+            try {
+              await this.addCaseDetails(hhmCase, groupName, detailNames, value);
+              log.info(logStr);
+            } catch (err) {
+              jLog(`failed to ${logStr}`, err as Error);
+            }
+          }
+
+          // Relationship
+          try {
+            const relationship = task.getString(`hhm_${n}_r`);
+            await this.fetch('case_relationships/', {
+              method: 'POST',
+              json: {
+                from_case: hohCase.url,
+                to_case: hhmCase.url,
+                relationship,
+              },
+            });
+            log.info(`set relationship(${relationship}) - hhm_${n}`);
+          } catch (err) {
+            jLog(`failed to set relationship`, err as Error);
+          }
         }
       }
 
@@ -491,10 +551,11 @@ export interface DemographicInfo {
 export const mapDemographic = (
   oasisGroup: OasisGroup,
   task: ClickUpTask,
+  prefix = 'hoh_',
 ): DemographicInfo => {
   switch (oasisGroup) {
     case OasisGroup.gender: {
-      const taskVal = task.getDropdownString('hoh_gen');
+      const taskVal = task.getDropdownString(`${prefix}gen`);
       return {
         detailNames:
           {
@@ -504,11 +565,11 @@ export const mapDemographic = (
             4: 'Non-binary',
             5: 'Other',
           }[taskVal?.[0] || ''] || null,
-        value: task.getString('hoh_gen_other'),
+        value: task.getString(`${prefix}gen_other`),
       };
     }
     case OasisGroup.additionalQuestions: {
-      const taskValues = task.getLabelsStrings('hoh_demog');
+      const taskValues = task.getLabelsStrings(`${prefix}demog`);
       if (!taskValues) {
         return { detailNames: null };
       }
@@ -527,7 +588,7 @@ export const mapDemographic = (
       };
     }
     case OasisGroup.benefits: {
-      const taskValues = task.getLabelsStrings('hoh_benefits');
+      const taskValues = task.getLabelsStrings(`${prefix}benefits`);
       if (!taskValues) {
         return { detailNames: null };
       }
@@ -547,7 +608,7 @@ export const mapDemographic = (
       };
     }
     case OasisGroup.ethnicity: {
-      const taskVal = task.getDropdownString('hoh_eth');
+      const taskVal = task.getDropdownString(`${prefix}eth`);
       return {
         detailNames:
           {
@@ -560,19 +621,19 @@ export const mapDemographic = (
             7: 'Multi-race (2 or more)',
             8: 'Other',
           }[taskVal?.[0] || ''] || null,
-        value: task.getString('hoh_eth_other'),
+        value: task.getString(`${prefix}eth_other`),
       };
     }
     case OasisGroup.language: {
       return {
         detailNames: 'Other',
-        value: task.getString('hoh_lang'),
+        value: task.getString(`${prefix}lang`),
       };
     }
     case OasisGroup.proxy: {
       return {
         detailNames: 'Other',
-        value: task.getString('hoh_proxy'),
+        value: task.getString(`${prefix}proxy`),
       };
     }
     default: {
