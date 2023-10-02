@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 interface Options extends RequestInit {
   json?: Record<string, unknown>;
   searchParams?: Record<string, string> | [string, string][];
@@ -22,7 +24,7 @@ export class ClickUpService {
       (searchParams && new URLSearchParams(searchParams).toString()) || '';
     const url = `${this.baseUrl}${route}${query ? `?${query}` : ''}`;
 
-    console.info(`${options?.method ?? 'GET'} ${url}`);
+    logger.info(`${options?.method ?? 'GET'} ${url}`);
     const res = await fetch(url, {
       ...(json && { body: JSON.stringify(json) }),
       ...options,
@@ -65,7 +67,43 @@ export class ClickUpService {
     this.customFieldsMap.set(listId, fields);
     return fields;
   }
+
+  async addTaskComment(
+    taskId: string,
+    comment: SimplifiedCommentContent[],
+  ): Promise<void> {
+    await this.fetch(`task/${taskId}/comment`, {
+      method: 'POST',
+      json: {
+        comment: comment.reduce((arr, c) => {
+          if (typeof c === 'string') {
+            arr.push({ text: c });
+            arr.push({ text: '\n' });
+          } else if (c instanceof Error) {
+            for (const text of c.message.split('\n')) {
+              arr.push({ text });
+              arr.push({
+                text: '\n',
+                attributes: { 'code-block': { 'code-block': 'plain' } },
+              });
+            }
+          } else {
+            arr.push(c);
+            arr.push({ text: '\n' });
+          }
+          return arr;
+        }, [] as Comment[]),
+      },
+    });
+  }
 }
+
+interface Comment {
+  text: string;
+  attributes?: Record<string, unknown>;
+}
+
+export type SimplifiedCommentContent = string | Error | Comment;
 
 export interface ClickUpWebhook {
   id: string;
@@ -187,7 +225,14 @@ interface CheckboxField extends BaseField {
 }
 
 interface TextField extends BaseField {
-  type: 'short_text' | 'location' | 'date' | 'email' | 'phone';
+  type:
+    | 'short_text'
+    | 'location'
+    | 'date'
+    | 'email'
+    | 'phone'
+    | 'url'
+    | 'number';
   value?: string;
 }
 
@@ -350,6 +395,8 @@ export class ClickUpTask {
         field.type !== 'date' &&
         field.type !== 'email' &&
         field.type !== 'currency' &&
+        field.type !== 'url' &&
+        field.type !== 'number' &&
         field.type !== 'phone')
     ) {
       return null;

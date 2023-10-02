@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import express, { NextFunction, type Request, type Response } from 'express';
-import Router from 'express-promise-router';
 import ngrok from 'ngrok';
 
 import {
@@ -13,10 +12,11 @@ import {
   ClickUpTask,
 } from './clickup';
 import { OasisService } from './oasis';
+import { logger } from './logger';
 
 const { error } = dotenv.config();
 if (error) {
-  console.error('Invalid .env file', error);
+  logger.error('Invalid .env file', error);
   process.exit(1);
 }
 
@@ -56,19 +56,19 @@ if (DELETE_EXISTING_WEBHOOKS) {
     await clickUpService.fetch(`webhook/${webhook.id}`, {
       method: 'DELETE',
     });
-    console.info(`deleted webhook ${webhook.id}`);
+    logger.info(`deleted webhook ${webhook.id}`);
   }
 }
 
 const groups = USE_CACHED_GROUPS
   ? oasisService.setGroups((await import('./fixtures/groups')).groups)
   : await oasisService.getGroups();
-console.info(`Loaded ${groups.length} Groups`);
+logger.info(`Loaded ${groups.length} Groups`);
 
 const details = USE_CACHED_DETAILS
   ? oasisService.setDetails((await import('./fixtures/details')).details)
   : await oasisService.getDetails();
-console.info(`Loaded ${details.length} Details`);
+logger.info(`Loaded ${details.length} Details`);
 
 if (IMPORT_TEST_CASE_AND_EXIT) {
   await oasisService.importClickUpTaskById(
@@ -80,7 +80,7 @@ if (IMPORT_TEST_CASE_AND_EXIT) {
 
 const port = parseInt(process.env.PORT || '80', 10);
 const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
-console.info('Using public URL:', publicUrl);
+logger.info('Using public URL:', publicUrl);
 
 const { webhook } = (await clickUpService.teamFetch('webhook', {
   method: 'POST',
@@ -89,7 +89,7 @@ const { webhook } = (await clickUpService.teamFetch('webhook', {
     events: ['taskCreated'],
   },
 })) as ClickUpWebhookResponse;
-console.info('registered webhook', webhook.id);
+logger.info('registered webhook', webhook.id);
 
 let healthInterval: NodeJS.Timeout | null = null;
 if (WEBHOOK_HEALTHCHECK_INTERVAL) {
@@ -103,27 +103,47 @@ if (WEBHOOK_HEALTHCHECK_INTERVAL) {
         if (!health) {
           throw new Error('webhook not found');
         }
-        console.info(
+        logger.info(
           `webhook health check: ${health.status}, ${health.fail_count}`,
         );
       } catch (err) {
-        console.error('webhook health check failed:', err);
+        logger.error('webhook health check failed:', err);
       }
     },
     parseInt(WEBHOOK_HEALTHCHECK_INTERVAL, 10) * 1000,
   );
 }
 
+const processingTasks: Map<string, Promise<void>> = new Map();
+const processTaskWithLock = async <T>(
+  taskId: string,
+  promise: Promise<T>,
+): Promise<T> => {
+  await processingTasks.get(taskId);
+  processingTasks.set(
+    taskId,
+    promise
+      .then(
+        () => {},
+        () => {},
+      )
+      .finally(() => {
+        processingTasks.delete(taskId);
+      }),
+  );
+  return promise;
+};
+
 let pollInterval: NodeJS.Timeout | null = null;
-let processing = false;
+let processingList: null | Promise<void> = null;
 if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
   pollInterval = setInterval(
-    async () => {
-      if (processing) {
-        console.warn('still processing from previous interval');
+    () => {
+      if (processingList) {
+        logger.warn('still processing from previous interval');
         return;
       }
-      try {
+      processingList = (async () => {
         const { tasks } = await clickUpService.fetch<{ tasks: Task[] }>(
           `list/${CLICKUP_LIST_ID}/task`,
           {
@@ -132,33 +152,33 @@ if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
             },
           },
         );
-        console.info(`found ${tasks.length} task(s) to process`);
+        logger.info(`found ${tasks.length} task(s) to process`);
+
+        // process in series to avoid oasis rate limiting
         for (const task of tasks) {
-          console.info(`processing task ${task.id}`);
-          try {
-            await oasisService.importClickUpTask(
-              clickUpService,
-              new ClickUpTask(task),
-            );
-          } catch (err) {
-            // already logged
-          }
+          logger.info(`processing task ${task.id}`);
+          await processTaskWithLock(
+            task.id,
+            oasisService
+              .importClickUpTask(clickUpService, new ClickUpTask(task))
+              .catch(() => {
+                // already logged, keep processing list
+              }),
+          );
         }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        processing = false;
-      }
+      })()
+        .catch(logger.error)
+        .finally(() => {
+          processingList = null;
+        });
     },
     parseInt(CLICKUP_POLL_INTERVAL, 10) * 1000,
   );
 }
 
 const app = express();
-const router = Router();
-app.use(router);
 
-router.post(
+app.post(
   '/webhook',
   // verify webhook signature
   (req: Request, res: Response, next: NextFunction) => {
@@ -172,12 +192,12 @@ router.post(
         .update(data)
         .digest('hex');
       if (req.headers['x-signature'] !== hash) {
-        console.warn('webhook signature mismatch');
+        logger.warn('webhook signature mismatch');
         return res.sendStatus(400);
       }
       req.body = JSON.parse(data);
       if (req.body.webhook_id !== webhook.id) {
-        console.warn('webhook id mismatch');
+        logger.warn('webhook id mismatch');
         return res.sendStatus(400);
       }
 
@@ -185,42 +205,49 @@ router.post(
     });
   },
   // handle webhook request
-  async (req: Request, res: Response) => {
-    console.log('webhook received:', req.body.event);
+  (req: Request, res: Response) => {
+    // logger.debug('webhook received:', req.body.event);
 
-    switch (req.body.event) {
-      case 'taskCreated': {
-        const taskCreated: TaskCreatedEvent = req.body;
-        const taskId = taskCreated.task_id;
-        console.info(`taskCreated: ${taskId}`);
-        await oasisService.importClickUpTaskById(clickUpService, taskId, () => {
-          // consider successful if we created a case
-          // clickup retries webhooks if we don't respond in 7 seconds
+    // clickup retries webhooks if we don't respond within 7 seconds
+    // so just respond to consider it handled, whether we succeed or not below
+    res.sendStatus(200);
+
+    // processing is async to the http request itself
+    (async () => {
+      switch (req.body.event) {
+        case 'taskCreated': {
+          const taskCreated: TaskCreatedEvent = req.body;
+          const taskId = taskCreated.task_id;
+          logger.info(`webhook(taskCreated): ${taskId}`);
+
+          await processTaskWithLock(
+            taskId,
+            oasisService.importClickUpTaskById(clickUpService, taskId),
+          );
+          break;
+        }
+        default: {
+          logger.warn('unhandled webhook event:', req.body.event);
           res.sendStatus(200);
-        });
-        break;
+          break;
+        }
       }
-      default: {
-        console.warn('unhandled event', req.body.event);
-        res.sendStatus(200);
-        break;
-      }
-    }
+    })().catch(logger.error);
   },
 );
 
-router.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err);
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  logger.error(err);
   res.sendStatus(500);
 });
 
 const server = app.listen(port, () => {
-  console.info(`Server listening on port ${port}`);
+  logger.info(`Server listening on port ${port}`);
 });
 
 // delete webhook on process exit
 process.on('SIGINT', async () => {
-  console.info('shutting down');
+  logger.info('shutting down');
   if (healthInterval) {
     clearInterval(healthInterval);
   }
@@ -232,9 +259,9 @@ process.on('SIGINT', async () => {
     await clickUpService.fetch(`webhook/${webhook.id}`, {
       method: 'DELETE',
     });
-    console.info('webhook deleted');
+    logger.info('webhook deleted');
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
   await ngrok.kill();
   process.exit(0);

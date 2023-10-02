@@ -1,4 +1,9 @@
-import { ClickUpService, ClickUpTask } from './clickup';
+import {
+  ClickUpService,
+  ClickUpTask,
+  SimplifiedCommentContent,
+} from './clickup';
+import { logger } from './logger';
 
 interface Options extends RequestInit {
   formData?: Record<string, string>;
@@ -25,7 +30,7 @@ export class OasisService {
     const url = route.startsWith(this.baseUrl)
       ? route
       : `${this.baseUrl}${route}`;
-    console.info(`${options?.method ?? 'GET'} ${url}`);
+    logger.info(`${options?.method ?? 'GET'} ${url}`);
 
     let formData;
     if (passedFormData) {
@@ -209,42 +214,66 @@ export class OasisService {
     return results;
   }
 
+  async createCase(caseData: Partial<Case>): Promise<Case> {
+    logger.debug(`creating case with data:`, caseData);
+    // The trailing slash on `cases/` is important
+    return this.fetch<Case>('cases/', {
+      method: 'POST',
+      json: caseData,
+    });
+  }
+
+  constructDOB(
+    year: string | null,
+    month: string | null,
+    day: string | null,
+  ): string | null {
+    return year
+      ? `${year}${month ? `-${month}${day ? `-${day}` : ''}` : ''}`
+      : null;
+  }
+
   async importClickUpTask(
     clickUpService: ClickUpService,
     task: ClickUpTask,
-    caseCallback?: (c: Case) => void,
   ): Promise<Case> {
+    if (task.task.status.status?.toLowerCase() !== 'to-do') {
+      throw new Error(
+        `Task ${task.id} is not in TO-DO status, cannot import. Current status: ${task.task.status.status}`,
+      );
+    }
+    let log = logger.child({ t: task.id });
+    const jobLogs: SimplifiedCommentContent[] = [];
+    const jLog = (...lines: SimplifiedCommentContent[]) => {
+      for (const line of lines) {
+        jobLogs.push(line);
+        log.info(line);
+      }
+    };
     try {
-      const dobY = task.getDropdownString('hoh_dob_y');
-      const dobM = task.getDropdownString('hoh_dob_m');
-      const dobD = task.getDropdownString('hoh_dob');
-      const data = {
-        first_name: `${task.getString('hoh_fn')}`,
-        last_name: `${task.getString('hoh_lname')}`,
-        ...(dobY
-          ? {
-              date_of_birth: `${dobY}${
-                dobM ? `-${dobM}${dobD ? `-${dobD}` : ''}` : ''
-              }`,
-            }
-          : {}),
-        email: `${task.getString('hoh_email')}`,
+      const existingCase = task.getString('case_url');
+      if (existingCase) {
+        throw new Error(`Task already has case: ${existingCase}`);
+      }
+      const hohCase = await this.createCase({
+        first_name: task.getString('hoh_fn') || '',
+        last_name: task.getString('hoh_lname') || '',
+        date_of_birth:
+          this.constructDOB(
+            task.getDropdownString('hoh_dob_y'),
+            task.getDropdownString('hoh_dob_m'),
+            task.getDropdownString('hoh_dob'),
+          ) || '',
+        email: task.getString('hoh_email') || '',
         head_of_household: true,
-        street_address: `${task.getString('hoh_add') || ''}`,
-        street_city: `${task.getString('hoh_city') || ''}`,
-        street_zip_code: `${task.getString('hoh_zip') || ''}`,
-      };
-      console.debug(`t[${task.id}] creating case with data:`, data);
-      // The trailing slash on `cases/` is important
-      const newCase: Case = await this.fetch('cases/', {
-        json: data,
-        method: 'POST',
+        street_address: task.getString('hoh_add') || '',
+        street_city: task.getString('hoh_city') || '',
+        street_zip_code: task.getString('hoh_zip') || '',
       });
-      console.info(`t[${task.id}] case created: ${newCase.url}`);
-      const cLog = (str: string) => `c[${newCase.id}] ${str}`;
-      console.debug(cLog(JSON.stringify(newCase, null, 2)));
-
-      caseCallback?.(newCase);
+      log = log.child({ c: hohCase.id });
+      const hohUrl = caseToUrl(hohCase);
+      jLog(`HoH case created: ${hohUrl}`);
+      log.debug(JSON.stringify(hohCase, null, 2));
 
       // Set case url on clickup task
       const clickUpFields = await clickUpService.getCustomFields(
@@ -252,14 +281,13 @@ export class OasisService {
       );
       const urlField = clickUpFields.find((f) => f.name === 'case_url');
       if (urlField?.id) {
-        const webUrl = newCase.url.replace(/\/api\/v1/, '');
         await clickUpService.fetch(`task/${task.id}/field/${urlField.id}`, {
           method: 'POST',
           json: {
-            value: webUrl,
+            value: hohUrl,
           },
         });
-        console.info(cLog(`set case url(${webUrl})`));
+        log.debug(`set case url(${hohUrl})`);
       }
 
       // Phone number
@@ -272,29 +300,29 @@ export class OasisService {
           ? `${match[1]}-${match[2]}-${match[3]}`
           : phoneNumRaw;
         try {
-          await this.addPhoneNumber(newCase, phoneDesc, phoneNum);
-          console.debug(cLog(`set phone number(${phoneDesc}, ${phoneNum})`));
+          await this.addPhoneNumber(hohCase, phoneDesc, phoneNum);
+          log.info(`set phone number(${phoneDesc}, ${phoneNum})`);
         } catch (err) {
-          console.error(
-            cLog(`failed to set phone number(${phoneDesc}, ${phoneNum})`),
-            err,
+          jLog(
+            `failed to set phone number(${phoneDesc}, ${phoneNum})`,
+            err as Error,
           );
         }
       } else {
-        console.info(cLog('missing phone number'));
+        log.debug('phone number not specified');
       }
 
       // Income
       const income = task.getString('hoh_income', 'currency');
       if (income) {
         try {
-          await this.addIncomeSource(newCase, income);
-          console.debug(cLog(`set income(${income})`));
+          await this.addIncomeSource(hohCase, income);
+          log.info(`set income(${income})`);
         } catch (err) {
-          console.error(cLog(`failed to set income(${income})`), err);
+          jLog(`failed to set income(${income})`, err as Error);
         }
       } else {
-        console.info(cLog(`income not specified`));
+        log.debug(`income not specified`);
       }
 
       // Demographics
@@ -302,10 +330,10 @@ export class OasisService {
         const { detailNames, value } = mapDemographic(groupName, task);
         const logStr = `set demographic(${groupName}, ${detailNames}, ${value})`;
         try {
-          await this.addCaseDetails(newCase, groupName, detailNames, value);
-          console.debug(cLog(logStr));
+          await this.addCaseDetails(hohCase, groupName, detailNames, value);
+          log.info(logStr);
         } catch (err) {
-          console.error(cLog(`failed to ${logStr}`), err);
+          jLog(`failed to ${logStr}`, err as Error);
         }
       }
 
@@ -313,52 +341,47 @@ export class OasisService {
       await clickUpService.fetch(`task/${task.id}`, {
         method: 'PUT',
         json: {
-          status: 'IN OASIS',
+          status: 'in oasis',
         },
       });
 
-      console.info(cLog(`job complete`));
-      return newCase;
+      log.info(`job complete`);
+      return hohCase;
     } catch (err) {
       // set task status
       await clickUpService.fetch(`task/${task.id}`, {
         method: 'PUT',
         json: {
-          status: 'STUCK',
+          status: 'stuck',
         },
       });
-      await clickUpService.fetch(`task/${task.id}/comment`, {
-        method: 'POST',
-        json: {
-          comment: [
-            {
-              text: `Failed to import into OASIS:\n`,
-            },
-            ...(err as Error).message.split('\n').reduce((lines, text) => {
-              lines.push({ text });
-              lines.push({
-                text: '\n',
-                attributes: { 'code-block': { 'code-block': 'plain' } },
-              });
-              return lines;
-            }, [] as any[]),
-          ],
-        },
-      });
-      console.error(`job failed`, err);
+      jLog('OASIS import failed:', err as Error);
+      log.error(`job failed`, err);
       throw err;
+    } finally {
+      if (jobLogs.length) {
+        // add comment to task
+        await clickUpService
+          .addTaskComment(task.id, jobLogs)
+          .catch(logger.error);
+      }
     }
   }
 
   async importClickUpTaskById(
     clickUpService: ClickUpService,
     taskId: string,
-    caseCallback?: (c: Case) => void,
   ): Promise<Case> {
     const task = new ClickUpTask(await clickUpService.fetch(`task/${taskId}`));
-    return this.importClickUpTask(clickUpService, task, caseCallback);
+    // (await import('fs')).writeFileSync(
+    //   './src/fixtures/task.ts',
+    //   JSON.stringify(task.task, null, 2),
+    // );
+    return this.importClickUpTask(clickUpService, task);
   }
 }
+
+const caseToUrl = (c: Case) => c.url.replace(/\/api\/v1/, '');
 
 export enum OasisGroup {
   gender = 'Gender',
@@ -522,7 +545,7 @@ export const mapDemographic = (
     }
     default: {
       // @ts-expect-error OasisGroup should be exhaustive
-      console.error(`Unmapped OasisGroup: ${oasisGroup.toString()}`);
+      logger.error(`Unmapped OasisGroup: ${oasisGroup.toString()}`);
       return {
         detailNames: task.getDropdownString(oasisGroup),
       };
