@@ -267,6 +267,7 @@ export class OasisService {
         email: task.getString('hoh_email') || '',
         head_of_household: true,
         street_address: task.getString('hoh_add') || '',
+        street_apt_number: task.getString('hoh_apt') || '',
         street_city: task.getString('hoh_city') || '',
         street_zip_code: task.getString('hoh_zip') || '',
       });
@@ -383,10 +384,13 @@ export class OasisService {
 
 const caseToUrl = (c: Case) => c.url.replace(/\/api\/v1/, '');
 
+// Key is arbitrary, value must match the Oasis group name
 export enum OasisGroup {
-  gender = 'Gender',
-  ethnicity = 'Ethnicity',
   additionalQuestions = 'Additional Questions',
+  benefits = 'Public Benefits',
+  ethnicity = 'Ethnicity',
+  gender = 'Gender',
+  language = 'Primary Language',
   proxy = 'Permanent Proxy (optional)',
 }
 
@@ -521,6 +525,26 @@ export const mapDemographic = (
           .filter((v): v is string => !!v),
       };
     }
+    case OasisGroup.benefits: {
+      const taskValues = task.getLabelsStrings('hoh_benefits');
+      if (!taskValues) {
+        return { detailNames: null };
+      }
+      return {
+        detailNames: taskValues
+          .map(
+            (taskVal) =>
+              ({
+                1: 'CalFresh',
+                2: 'WIC',
+                3: 'Disability',
+                4: 'Medicare/Medi-Cal',
+                5: 'Social Security',
+              })[taskVal?.[0] || ''] || null,
+          )
+          .filter((v): v is string => !!v),
+      };
+    }
     case OasisGroup.ethnicity: {
       const taskVal = task.getDropdownString('hoh_eth');
       return {
@@ -535,6 +559,12 @@ export const mapDemographic = (
             7: 'Multi-race (2 or more)',
             8: 'Other',
           }[taskVal?.[0] || ''] || null,
+      };
+    }
+    case OasisGroup.language: {
+      return {
+        detailNames: 'Other',
+        value: task.getString('hoh_lang'),
       };
     }
     case OasisGroup.proxy: {
