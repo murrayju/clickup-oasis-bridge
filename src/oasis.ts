@@ -257,12 +257,12 @@ export class OasisService {
       }
       const hohCase = await this.createCase({
         first_name: task.getString('hoh_fn') || '',
-        last_name: task.getString('hoh_lname') || '',
+        last_name: task.getString('hoh_ln') || '',
         date_of_birth:
           this.constructDOB(
             task.getDropdownString('hoh_dob_y'),
             task.getDropdownString('hoh_dob_m'),
-            task.getDropdownString('hoh_dob'),
+            task.getDropdownString('hoh_dob_d'),
           ) || '',
         email: task.getString('hoh_email') || '',
         head_of_household: true,
