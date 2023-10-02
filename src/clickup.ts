@@ -1,4 +1,4 @@
-import { logger } from './logger';
+import { logger } from './logger.js';
 
 interface Options extends RequestInit {
   json?: Record<string, unknown>;

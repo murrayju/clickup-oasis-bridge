@@ -2,8 +2,8 @@ import {
   ClickUpService,
   ClickUpTask,
   SimplifiedCommentContent,
-} from './clickup';
-import { logger } from './logger';
+} from './clickup.js';
+import { logger } from './logger.js';
 
 interface Options extends RequestInit {
   formData?: Record<string, string>;

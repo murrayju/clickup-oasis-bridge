@@ -10,9 +10,9 @@ import {
   ClickUpWebhooksResponse,
   Task,
   ClickUpTask,
-} from './clickup';
-import { OasisService } from './oasis';
-import { logger } from './logger';
+} from './clickup.js';
+import { OasisService } from './oasis.js';
+import { logger } from './logger.js';
 
 const { error } = dotenv.config();
 if (error) {
@@ -61,12 +61,12 @@ if (DELETE_EXISTING_WEBHOOKS) {
 }
 
 const groups = USE_CACHED_GROUPS
-  ? oasisService.setGroups((await import('./fixtures/groups')).groups)
+  ? oasisService.setGroups((await import('./fixtures/groups.js')).groups)
   : await oasisService.getGroups();
 logger.info(`Loaded ${groups.length} Groups`);
 
 const details = USE_CACHED_DETAILS
-  ? oasisService.setDetails((await import('./fixtures/details')).details)
+  ? oasisService.setDetails((await import('./fixtures/details.js')).details)
   : await oasisService.getDetails();
 logger.info(`Loaded ${details.length} Details`);
 
