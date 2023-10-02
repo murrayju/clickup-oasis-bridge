@@ -362,7 +362,6 @@ export class OasisService {
           const hhmUrl = caseToUrl(hhmCase);
           jLog(`HHM ${n} case created: ${hhmUrl}`);
           log.debug(JSON.stringify(hhmCase, null, 2));
-          console.log(JSON.stringify(hhmCase, null, 2));
 
           // Demographics
           for (const groupName of [OasisGroup.ethnicity, OasisGroup.gender]) {
