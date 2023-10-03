@@ -80,7 +80,7 @@ if (IMPORT_TEST_CASE_AND_EXIT) {
 
 const port = parseInt(process.env.PORT || '80', 10);
 const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
-logger.info('Using public URL:', publicUrl);
+logger.info(`Using public URL: ${publicUrl}`);
 
 const { webhook } = (await clickUpService.teamFetch('webhook', {
   method: 'POST',
@@ -89,7 +89,7 @@ const { webhook } = (await clickUpService.teamFetch('webhook', {
     events: ['taskCreated'],
   },
 })) as ClickUpWebhookResponse;
-logger.info('registered webhook', webhook.id);
+logger.info(`registered webhook: ${webhook.id}`);
 
 let healthInterval: NodeJS.Timeout | null = null;
 if (WEBHOOK_HEALTHCHECK_INTERVAL) {
@@ -227,7 +227,7 @@ app.post(
           break;
         }
         default: {
-          logger.warn('unhandled webhook event:', req.body.event);
+          logger.warn(`unhandled webhook event: ${req.body.event}`);
           res.sendStatus(200);
           break;
         }
