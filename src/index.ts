@@ -47,12 +47,25 @@ if (!OASIS_BASE_URL) {
 }
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
+const port = parseInt(process.env.PORT || '80', 10);
+const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
+logger.info(`Using public URL: ${publicUrl}`);
+const webhookEndpoint = `${publicUrl}/webhook`;
 
 if (DELETE_EXISTING_WEBHOOKS) {
   const { webhooks } = (await clickUpService.teamFetch(
     `webhook`,
   )) as ClickUpWebhooksResponse;
+  const filters = DELETE_EXISTING_WEBHOOKS.split(',');
+  const onlyFailing = filters.includes('failing');
+  const onlyMatching = filters.includes('matching');
   for (const webhook of webhooks) {
+    if (
+      (onlyFailing && webhook.health?.status !== 'failing') ||
+      (onlyMatching && webhook.endpoint !== webhookEndpoint)
+    ) {
+      continue;
+    }
     await clickUpService.fetch(`webhook/${webhook.id}`, {
       method: 'DELETE',
     });
@@ -78,14 +91,10 @@ if (IMPORT_TEST_CASE_AND_EXIT) {
   process.exit(0);
 }
 
-const port = parseInt(process.env.PORT || '80', 10);
-const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
-logger.info(`Using public URL: ${publicUrl}`);
-
 const { webhook } = (await clickUpService.teamFetch('webhook', {
   method: 'POST',
   json: {
-    endpoint: `${publicUrl}/webhook`,
+    endpoint: webhookEndpoint,
     events: ['taskCreated'],
   },
 })) as ClickUpWebhookResponse;
