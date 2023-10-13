@@ -428,7 +428,7 @@ export class OasisService {
                 from_case: hohCase.url,
                 to_case: hhmCase.url,
                 relationship,
-                dependent: true,
+                dependant: true,
               },
             });
             log.info(`set relationship(${relationship}) - hhm_${n}`);
