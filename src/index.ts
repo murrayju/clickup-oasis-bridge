@@ -13,14 +13,7 @@ import {
 } from './clickup.js';
 import { OasisService } from './oasis.js';
 import { logger } from './logger.js';
-
-const { error } = dotenv.config();
-if (error) {
-  logger.error('Invalid .env file', error);
-  process.exit(1);
-}
-
-const {
+import {
   CLICKUP_API_TOKEN,
   CLICKUP_TEAM_ID,
   CLICKUP_LIST_ID,
@@ -32,23 +25,15 @@ const {
   WEBHOOK_HEALTHCHECK_INTERVAL,
   DELETE_EXISTING_WEBHOOKS,
   IMPORT_TEST_CASE_AND_EXIT,
-} = process.env;
-if (!CLICKUP_API_TOKEN) {
-  throw new Error('Missing CLICKUP_API_TOKEN in .env');
-}
-if (!CLICKUP_TEAM_ID) {
-  throw new Error('Missing CLICKUP_TEAM_ID in .env');
-}
-if (!OASIS_API_TOKEN) {
-  throw new Error('Missing OASIS_API_TOKEN in .env');
-}
-if (!OASIS_BASE_URL) {
-  throw new Error('Missing OASIS_BASE_URL in .env');
-}
+  PORT,
+  PUBLIC_URL,
+  CLICKUP_STATUS_TODO,
+} from './env.js';
+
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
-const port = parseInt(process.env.PORT || '80', 10);
-const publicUrl = process.env.PUBLIC_URL || (await ngrok.connect(port));
+const port = parseInt(PORT, 10);
+const publicUrl = PUBLIC_URL || (await ngrok.connect(port));
 logger.info(`Using public URL: ${publicUrl}`);
 const webhookEndpoint = `${publicUrl}/webhook`;
 
@@ -126,9 +111,10 @@ if (WEBHOOK_HEALTHCHECK_INTERVAL) {
 const processingTasks: Map<string, Promise<void>> = new Map();
 const processTaskWithLock = async <T>(
   taskId: string,
-  promise: Promise<T>,
+  task: () => Promise<T>,
 ): Promise<T> => {
   await processingTasks.get(taskId);
+  const promise = task();
   processingTasks.set(
     taskId,
     promise
@@ -157,7 +143,7 @@ if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
           `list/${CLICKUP_LIST_ID}/task`,
           {
             searchParams: {
-              'statuses[]': 'TO-DO',
+              'statuses[]': CLICKUP_STATUS_TODO,
             },
           },
         );
@@ -166,8 +152,7 @@ if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
         // process in series to avoid oasis rate limiting
         for (const task of tasks) {
           logger.info(`processing task ${task.id}`);
-          await processTaskWithLock(
-            task.id,
+          await processTaskWithLock(task.id, () =>
             oasisService
               .importClickUpTask(clickUpService, new ClickUpTask(task))
               .catch(() => {
@@ -229,8 +214,7 @@ app.post(
           const taskId = taskCreated.task_id;
           logger.info(`webhook(taskCreated): ${taskId}`);
 
-          await processTaskWithLock(
-            taskId,
+          await processTaskWithLock(taskId, () =>
             oasisService.importClickUpTaskById(clickUpService, taskId),
           );
           break;

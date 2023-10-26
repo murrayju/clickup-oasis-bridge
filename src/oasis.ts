@@ -2,7 +2,15 @@ import {
   ClickUpService,
   ClickUpTask,
   SimplifiedCommentContent,
+  Task,
 } from './clickup.js';
+import {
+  CLICKUP_LIST_ID,
+  CLICKUP_STATUS_ERROR,
+  CLICKUP_STATUS_PROCESSING,
+  CLICKUP_STATUS_SUCCESS,
+  CLICKUP_STATUS_TODO,
+} from './env.js';
 import { logger } from './logger.js';
 
 interface Options extends RequestInit {
@@ -237,11 +245,15 @@ export class OasisService {
     clickUpService: ClickUpService,
     task: ClickUpTask,
   ): Promise<Case> {
-    if (task.task.status.status?.toLowerCase() !== 'to-do') {
+    if (
+      task.task.status.status?.toLowerCase() !==
+      CLICKUP_STATUS_TODO.toLowerCase()
+    ) {
       throw new Error(
-        `Task ${task.id} is not in TO-DO status, cannot import. Current status: ${task.task.status.status}`,
+        `Task ${task.id} is not in '${CLICKUP_STATUS_TODO}' status, cannot import. Current status: ${task.task.status.status}`,
       );
     }
+
     let log = logger.child({ t: task.id });
     const jobLogs: SimplifiedCommentContent[] = [];
     const jLog = (...lines: SimplifiedCommentContent[]) => {
@@ -251,10 +263,54 @@ export class OasisService {
       }
     };
     try {
+      // set task status to processing
+      await clickUpService.fetch(`task/${task.id}`, {
+        method: 'PUT',
+        json: {
+          status: CLICKUP_STATUS_PROCESSING,
+        },
+      });
+
       const existingCase = task.getString('case_url');
       if (existingCase) {
         throw new Error(`Task already has case: ${existingCase}`);
       }
+
+      // Check for duplicate tasks by email
+      const email = task.getString('hoh_email');
+      if (!email) {
+        throw new Error(`Email is a required field. Cannot process.`);
+      }
+      const { tasks: existing } = await clickUpService.fetch<{ tasks: Task[] }>(
+        `list/${CLICKUP_LIST_ID}/task`,
+        {
+          searchParams: {
+            include_closed: 'true',
+            custom_fields: JSON.stringify([
+              {
+                field_id: task.getField('hoh_email')?.id,
+                operator: '=',
+                value: email,
+              },
+            ]),
+          },
+        },
+      );
+
+      let clickUpDup = false;
+      for (const t of existing) {
+        if (t.id === task.id) {
+          continue;
+        }
+        jLog(`Found existing task for email '${email}': ${t.url}`);
+        clickUpDup = true;
+      }
+      if (clickUpDup) {
+        throw new Error(
+          `Found possible duplicate ClickUp tasks, aborting import`,
+        );
+      }
+
       const address = {
         street_address: task.getString('hoh_add') || '',
         street_apt_number: task.getString('hoh_apt') || '',
@@ -270,7 +326,7 @@ export class OasisService {
             task.getDropdownString('hoh_dob_m'),
             task.getDropdownString('hoh_dob_d'),
           ) || '',
-        email: task.getString('hoh_email') || '',
+        email,
         head_of_household: true,
         ...address,
       });
@@ -442,7 +498,7 @@ export class OasisService {
       await clickUpService.fetch(`task/${task.id}`, {
         method: 'PUT',
         json: {
-          status: 'in oasis',
+          status: CLICKUP_STATUS_SUCCESS,
         },
       });
 
@@ -453,7 +509,7 @@ export class OasisService {
       await clickUpService.fetch(`task/${task.id}`, {
         method: 'PUT',
         json: {
-          status: 'stuck',
+          status: CLICKUP_STATUS_ERROR,
         },
       });
       jLog('OASIS import failed:', err as Error);
