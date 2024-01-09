@@ -518,9 +518,9 @@ export class OasisService {
     } finally {
       if (jobLogs.length) {
         // add comment to task
-        await clickUpService
-          .addTaskComment(task.id, jobLogs)
-          .catch(logger.error);
+        await clickUpService.addTaskComment(task.id, jobLogs).catch((err) => {
+          logger.error(err);
+        });
       }
     }
   }

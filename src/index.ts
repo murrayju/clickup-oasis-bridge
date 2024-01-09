@@ -161,7 +161,9 @@ if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
           );
         }
       })()
-        .catch(logger.error)
+        .catch((err) => {
+          logger.error(err);
+        })
         .finally(() => {
           processingList = null;
         });
@@ -225,7 +227,9 @@ app.post(
           break;
         }
       }
-    })().catch(logger.error);
+    })().catch((err) => {
+      logger.error(err);
+    });
   },
 );
 
