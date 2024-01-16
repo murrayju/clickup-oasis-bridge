@@ -36,6 +36,7 @@ export const {
   DELETE_EXISTING_WEBHOOKS,
   IMPORT_TEST_CASE_AND_EXIT,
   LOG_LEVEL = 'info',
+  NGROK_AUTH_TOKEN,
   PORT = '80',
   PUBLIC_URL,
 } = process.env;

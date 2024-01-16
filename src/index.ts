@@ -28,12 +28,15 @@ import {
   PORT,
   PUBLIC_URL,
   CLICKUP_STATUS_TODO,
+  NGROK_AUTH_TOKEN,
 } from './env.js';
 
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
 const port = parseInt(PORT, 10);
-const publicUrl = PUBLIC_URL || (await ngrok.connect(port));
+const publicUrl =
+  PUBLIC_URL ||
+  (await ngrok.connect({ addr: port, authtoken: NGROK_AUTH_TOKEN }));
 logger.info(`Using public URL: ${publicUrl}`);
 const webhookEndpoint = `${publicUrl}/webhook`;
 
