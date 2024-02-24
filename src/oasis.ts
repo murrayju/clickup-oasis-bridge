@@ -538,7 +538,7 @@ export class OasisService {
   }
 }
 
-const caseToUrl = (c: Case) => c.url.replace(/\/api\/v1/, '');
+const caseToUrl = (c: Case) => c.url?.replace(/\/api\/v1/, '') || `(missing url for case ${c.id})`;
 
 // Key is arbitrary, value must match the Oasis group name
 export enum OasisGroup {
