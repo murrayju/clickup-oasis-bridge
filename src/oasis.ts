@@ -154,7 +154,7 @@ export class OasisService {
     return this.fetch('phone_numbers/', {
       method: 'POST',
       json: {
-        case: c.url,
+        case: this.caseToApiUrl(c),
         description,
         number,
       },
@@ -170,7 +170,7 @@ export class OasisService {
     return this.fetch('income_sources/', {
       method: 'POST',
       json: {
-        case: c.url,
+        case: this.caseToApiUrl(c),
         amount,
         interval,
         name,
@@ -212,7 +212,7 @@ export class OasisService {
         await this.fetch('case_details/', {
           method: 'POST',
           json: {
-            case: c.url,
+            case: this.caseToApiUrl(c),
             detail: detail.url,
             value,
           },
@@ -331,7 +331,7 @@ export class OasisService {
         ...address,
       });
       log = log.child({ c: hohCase.id });
-      const hohUrl = caseToUrl(hohCase);
+      const hohUrl = this.caseToUrl(hohCase);
       jLog(`HoH case created: ${hohUrl}`);
       log.debug(JSON.stringify(hohCase, null, 2));
 
@@ -340,7 +340,7 @@ export class OasisService {
         await this.fetch('notes/', {
           method: 'POST',
           json: {
-            case: hohCase.url,
+            case: this.caseToApiUrl(hohCase),
             description: `Imported from ClickUp task ${task.task.url}`,
             entry_agent: hohCase.entry_agent,
             mod_agent: hohCase.mod_agent,
@@ -435,7 +435,7 @@ export class OasisService {
             household: hohCase.household,
             ...address,
           });
-          const hhmUrl = caseToUrl(hhmCase);
+          const hhmUrl = this.caseToUrl(hhmCase);
           jLog(`HHM ${n} case created: ${hhmUrl}`);
           log.debug(JSON.stringify(hhmCase, null, 2));
 
@@ -444,7 +444,7 @@ export class OasisService {
             await this.fetch('notes/', {
               method: 'POST',
               json: {
-                case: hhmCase.url,
+                case: this.caseToApiUrl(hhmCase),
                 description: `Imported from ClickUp task ${task.task.url}`,
                 entry_agent: hhmCase.entry_agent,
                 mod_agent: hhmCase.mod_agent,
@@ -481,8 +481,8 @@ export class OasisService {
             await this.fetch('case_relationships/', {
               method: 'POST',
               json: {
-                from_case: hohCase.url,
-                to_case: hhmCase.url,
+                from_case: this.caseToApiUrl(hohCase),
+                to_case: this.caseToApiUrl(hhmCase),
                 relationship,
                 dependant: true,
               },
@@ -536,9 +536,15 @@ export class OasisService {
     // );
     return this.importClickUpTask(clickUpService, task);
   }
-}
 
-const caseToUrl = (c: Case) => c.url?.replace(/\/api\/v1/, '') || `(missing url for case ${c.id})`;
+  private caseToUrl(c: Case) {
+    return this.caseToApiUrl(c).replace(/\/api\/v1/, '');
+  }
+
+  private caseToApiUrl(c: Case) {
+    return c.url || `${this.baseUrl}cases/${c.id}/`;
+  }
+}
 
 // Key is arbitrary, value must match the Oasis group name
 export enum OasisGroup {
@@ -596,7 +602,8 @@ export interface PagedResponse<T> {
 }
 
 export interface Case {
-  url: string;
+  // This used to exist, but was removed
+  url: string | undefined;
   id: number;
   first_name: string;
   middle_name: string;
