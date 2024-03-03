@@ -202,7 +202,7 @@ export class OasisService {
       if (!details) {
         throw new Error(`No details found matching: ${detailName}`);
       }
-      const detail = details.find((d) => d.group === group.url);
+      const detail = details.find((d) => d.group === group.id);
       if (!detail) {
         throw new Error(
           `Detail '${detailName}' not found in group ${groupName}`,
@@ -213,7 +213,7 @@ export class OasisService {
           method: 'POST',
           json: {
             case: this.caseToApiUrl(c),
-            detail: detail.url,
+            detail: detail.id,
             value,
           },
         }),
@@ -542,7 +542,7 @@ export class OasisService {
   }
 
   private caseToApiUrl(c: Case) {
-    return c.url || `${this.baseUrl}cases/${c.id}/`;
+    return `${this.baseUrl}cases/${c.id}/`;
   }
 }
 
@@ -557,8 +557,8 @@ export enum OasisGroup {
 }
 
 export interface Detail {
-  url: string;
-  group: string;
+  id: number;
+  group: number;
   name: string;
   index: number;
   template_key: string;
@@ -569,7 +569,7 @@ export interface Detail {
 }
 
 export interface Group {
-  url: string;
+  id: number;
   name: string;
   index: number;
   template_key: string;
@@ -602,8 +602,6 @@ export interface PagedResponse<T> {
 }
 
 export interface Case {
-  // This used to exist, but was removed
-  url: string | undefined;
   id: number;
   first_name: string;
   middle_name: string;
