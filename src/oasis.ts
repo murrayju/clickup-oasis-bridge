@@ -154,7 +154,7 @@ export class OasisService {
     return this.fetch('phone_numbers/', {
       method: 'POST',
       json: {
-        case: this.caseToApiUrl(c),
+        case: c.id,
         description,
         number,
       },
@@ -170,7 +170,7 @@ export class OasisService {
     return this.fetch('income_sources/', {
       method: 'POST',
       json: {
-        case: this.caseToApiUrl(c),
+        case: c.id,
         amount,
         interval,
         name,
@@ -212,7 +212,7 @@ export class OasisService {
         await this.fetch('case_details/', {
           method: 'POST',
           json: {
-            case: this.caseToApiUrl(c),
+            case: c.id,
             detail: detail.id,
             value,
           },
@@ -340,7 +340,7 @@ export class OasisService {
         await this.fetch('notes/', {
           method: 'POST',
           json: {
-            case: this.caseToApiUrl(hohCase),
+            case: hohCase.id,
             description: `Imported from ClickUp task ${task.task.url}`,
             entry_agent: hohCase.entry_agent,
             mod_agent: hohCase.mod_agent,
@@ -444,7 +444,7 @@ export class OasisService {
             await this.fetch('notes/', {
               method: 'POST',
               json: {
-                case: this.caseToApiUrl(hhmCase),
+                case: hhmCase.id,
                 description: `Imported from ClickUp task ${task.task.url}`,
                 entry_agent: hhmCase.entry_agent,
                 mod_agent: hhmCase.mod_agent,
@@ -481,8 +481,8 @@ export class OasisService {
             await this.fetch('case_relationships/', {
               method: 'POST',
               json: {
-                from_case: this.caseToApiUrl(hohCase),
-                to_case: this.caseToApiUrl(hhmCase),
+                from_case: hohCase.id,
+                to_case: hhmCase.id,
                 relationship,
                 dependant: true,
               },
