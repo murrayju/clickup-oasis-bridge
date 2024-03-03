@@ -575,7 +575,7 @@ export interface Group {
   template_key: string;
   group_type: string;
   case_tab: string;
-  section: string;
+  section: number;
   special_function: string;
   allow_other: boolean;
   required: boolean;

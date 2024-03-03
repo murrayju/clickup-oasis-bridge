@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import express, { NextFunction, type Request, type Response } from 'express';
 import ngrok from 'ngrok';
+// import fs from 'fs';
 
 import {
   ClickUpService,
@@ -65,11 +66,27 @@ const groups = USE_CACHED_GROUPS
   ? oasisService.setGroups((await import('./fixtures/groups.js')).groups)
   : await oasisService.getGroups();
 logger.info(`Loaded ${groups.length} Groups`);
+// fs.writeFileSync(
+//   './src/fixtures/groups.ts',
+//   `import { Group } from '../oasis';\n\nexport const groups: Group[] = ${JSON.stringify(
+//     groups,
+//     null,
+//     2,
+//   )};`,
+// );
 
 const details = USE_CACHED_DETAILS
   ? oasisService.setDetails((await import('./fixtures/details.js')).details)
   : await oasisService.getDetails();
 logger.info(`Loaded ${details.length} Details`);
+// fs.writeFileSync(
+//   './src/fixtures/details.ts',
+//   `import { Detail } from '../oasis';\n\nexport const details: Detail[] = ${JSON.stringify(
+//     details,
+//     null,
+//     2,
+//   )};`,
+// );
 
 if (IMPORT_TEST_CASE_AND_EXIT) {
   await oasisService.importClickUpTaskById(
