@@ -315,6 +315,7 @@ export class OasisService {
         street_address: task.getString('hoh_add') || '',
         street_apt_number: task.getString('hoh_apt') || '',
         street_city: task.getString('hoh_city') || '',
+        street_state: task.getString('hoh_state') || '',
         street_zip_code: task.getString('hoh_zip') || '',
       };
       const hohCase = await this.createCase({
