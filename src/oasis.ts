@@ -344,8 +344,9 @@ export class OasisService {
         );
       }
 
-      const countyName =
-        task.getString('hoh_county')?.toLowerCase() || DEFAULT_COUNTY_NAME;
+      const countyName = (
+        task.getString('hoh_county') || DEFAULT_COUNTY_NAME
+      )?.toLowerCase();
       const countyId: number | undefined = countyName
         ? [...this.countiesMap.values()].find((c) => {
             const name = c.name.toLowerCase();
@@ -356,7 +357,12 @@ export class OasisService {
             );
           })?.id
         : undefined;
-      log.debug({ countyName, countyId });
+      log.debug({
+        countyName,
+        countyId,
+        default: DEFAULT_COUNTY_NAME,
+        counties: this.countiesMap,
+      });
 
       const address: Partial<Case> = {
         street_address: task.getString('hoh_add') || '',
