@@ -356,7 +356,7 @@ export class OasisService {
             );
           })?.id
         : undefined;
-      console.log('countyId', countyId);
+      log.debug({ countyName, countyId });
 
       const address: Partial<Case> = {
         street_address: task.getString('hoh_add') || '',
