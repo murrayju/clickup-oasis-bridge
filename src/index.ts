@@ -21,6 +21,7 @@ import {
   CLICKUP_POLL_INTERVAL,
   OASIS_API_TOKEN,
   OASIS_BASE_URL,
+  USE_CACHED_COUNTIES,
   USE_CACHED_DETAILS,
   USE_CACHED_GROUPS,
   WEBHOOK_HEALTHCHECK_INTERVAL,
@@ -83,6 +84,19 @@ logger.info(`Loaded ${details.length} Details`);
 //   './src/fixtures/details.ts',
 //   `import { Detail } from '../oasis';\n\nexport const details: Detail[] = ${JSON.stringify(
 //     details,
+//     null,
+//     2,
+//   )};`,
+// );
+
+const counties = USE_CACHED_COUNTIES
+  ? oasisService.setCounties((await import('./fixtures/counties.js')).counties)
+  : await oasisService.getCounties();
+logger.info(`Loaded ${counties.length} Counties`);
+// fs.writeFileSync(
+//   './src/fixtures/counties.ts',
+//   `import { County } from '../oasis';\n\nexport const counties: County[] = ${JSON.stringify(
+//     counties,
 //     null,
 //     2,
 //   )};`,

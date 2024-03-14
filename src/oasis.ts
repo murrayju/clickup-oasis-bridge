@@ -10,6 +10,7 @@ import {
   CLICKUP_STATUS_PROCESSING,
   CLICKUP_STATUS_SUCCESS,
   CLICKUP_STATUS_TODO,
+  DEFAULT_COUNTY_NAME,
 } from './env.js';
 import { logger } from './logger.js';
 
@@ -21,6 +22,8 @@ interface Options extends RequestInit {
 export class OasisService {
   private baseUrl: string;
   private token: string;
+  private counties: County[] | null = null;
+  private _countyMap: Map<string, County> = new Map();
   private groups: Group[] | null = null;
   private _groupMap: Map<string, Group> = new Map();
   private details: Detail[] | null = null;
@@ -148,6 +151,36 @@ export class OasisService {
     this.groups = groups;
     this._groupMap.clear();
     return groups;
+  }
+
+  async fetchAllCounties(): Promise<Group[]> {
+    return this.fetchPaged('counties/');
+  }
+
+  // cached
+  async getCounties(refresh = false): Promise<County[]> {
+    if (refresh) {
+      this._countyMap.clear();
+    }
+    if (refresh || !this.counties) {
+      this.counties = await this.fetchAllCounties();
+    }
+    return this.counties;
+  }
+
+  get countiesMap(): Map<string, County> {
+    if (!this._countyMap.size && this.counties) {
+      for (const county of this.counties) {
+        this._countyMap.set(county.name.toLowerCase(), county);
+      }
+    }
+    return this._countyMap;
+  }
+
+  setCounties(counties: County[]): County[] {
+    this.counties = counties;
+    this._countyMap.clear();
+    return counties;
   }
 
   async addPhoneNumber(c: Case, description: string, number: string) {
@@ -311,10 +344,25 @@ export class OasisService {
         );
       }
 
-      const address = {
+      const countyName =
+        task.getString('hoh_county')?.toLowerCase() || DEFAULT_COUNTY_NAME;
+      const countyId: number | undefined = countyName
+        ? [...this.countiesMap.values()].find((c) => {
+            const name = c.name.toLowerCase();
+            return (
+              name === countyName ||
+              name.startsWith(countyName) ||
+              countyName.startsWith(name)
+            );
+          })?.id
+        : undefined;
+      console.log('countyId', countyId);
+
+      const address: Partial<Case> = {
         street_address: task.getString('hoh_add') || '',
         street_apt_number: task.getString('hoh_apt') || '',
         street_city: task.getString('hoh_city') || '',
+        street_county: countyId,
         street_state: task.getString('hoh_state') || '',
         street_zip_code: task.getString('hoh_zip') || '',
       };
@@ -602,6 +650,11 @@ export interface PagedResponse<T> {
   results: T[];
 }
 
+export interface County {
+  id: number;
+  name: string;
+}
+
 export interface Case {
   id: number;
   first_name: string;
@@ -622,6 +675,7 @@ export interface Case {
   street_address: string;
   street_apt_number: string;
   street_city: string;
+  street_county: County['id'];
   street_state: string;
   street_zip_code: string;
   yearly_expenses: number;
