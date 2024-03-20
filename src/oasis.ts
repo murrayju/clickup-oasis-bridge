@@ -14,6 +14,9 @@ import {
 } from './env.js';
 import { logger } from './logger.js';
 
+const trimQuotes = (s: string | null | undefined) =>
+  s?.replace(/^["' ]+|["' ]+$/g, '');
+
 interface Options extends RequestInit {
   formData?: Record<string, string>;
   json?: Record<string, unknown>;
@@ -344,11 +347,12 @@ export class OasisService {
         );
       }
 
-      const countyName = (
-        task.getString('hoh_county') || DEFAULT_COUNTY_NAME
-      )?.toLowerCase();
+      const countyName = trimQuotes(
+        (task.getString('hoh_county') || DEFAULT_COUNTY_NAME)?.toLowerCase(),
+      );
+      const counties = await this.getCounties();
       const countyId: number | undefined = countyName
-        ? [...this.countiesMap.values()].find((c) => {
+        ? counties.find((c) => {
             const name = c.name.toLowerCase();
             return (
               name === countyName ||
@@ -358,10 +362,10 @@ export class OasisService {
           })?.id
         : undefined;
       log.debug({
-        countyName,
-        countyId,
+        countyName: countyName || null,
+        countyId: countyId || null,
         default: DEFAULT_COUNTY_NAME,
-        counties: this.countiesMap,
+        counties,
       });
 
       const address: Partial<Case> = {
