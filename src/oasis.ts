@@ -610,9 +610,13 @@ export enum OasisGroup {
   additionalQuestions = 'Additional Questions',
   benefits = 'Public Benefits',
   ethnicity = 'Ethnicity',
+  emailConsent = 'Consent into Email San Diego Food Bank',
+  emailConsentDate = 'EMAIL San Diego Food Bank Consent IN Date',
   gender = 'Gender',
   language = 'Primary Language',
   proxy = 'Permanent Proxy (optional)',
+  textConsent = 'Consent into TEXT MESSAGE San Diego Food Bank',
+  textConsentDate = 'TEXT MESSAGE San Diego Food Bank Consent IN Date',
 }
 
 export interface Detail {
@@ -714,6 +718,11 @@ export interface DemographicInfo {
   value?: string | null;
 }
 
+const formatDate = (date = new Date()) =>
+  `${String(date.getMonth() + 1).padStart(2, '0')}/${String(
+    date.getDate(),
+  ).padStart(2, '0')}/${date.getFullYear()}`;
+
 export const mapDemographic = (
   oasisGroup: OasisGroup,
   task: ClickUpTask,
@@ -800,6 +809,40 @@ export const mapDemographic = (
       return {
         detailNames: 'Other',
         value: task.getString(`${prefix}proxy`),
+      };
+    }
+    case OasisGroup.emailConsent: {
+      const taskVal = task.getDropdownString(`optin_email`);
+      return {
+        detailNames:
+          {
+            1: 'Agency obtained EMAIL San Diego Food Bank consent (on paper)',
+            2: 'Client no longer consents (removal of consent)',
+          }[taskVal?.[0] || ''] || null,
+      };
+    }
+    case OasisGroup.emailConsentDate: {
+      const optIn = task.getDropdownString(`optin_email`)?.[0] === '1';
+      return {
+        detailNames: 'Other',
+        value: optIn ? formatDate() : '',
+      };
+    }
+    case OasisGroup.textConsent: {
+      const taskVal = task.getDropdownString(`optin_text`);
+      return {
+        detailNames:
+          {
+            1: 'Agency obtained TEXT MESSAGE San Diego Food Bank consent (on paper)',
+            2: 'Client no longer consents (removal of consent)',
+          }[taskVal?.[0] || ''] || null,
+      };
+    }
+    case OasisGroup.textConsentDate: {
+      const optIn = task.getDropdownString(`optin_text`)?.[0] === '1';
+      return {
+        detailNames: 'Other',
+        value: optIn ? formatDate() : '',
       };
     }
     default: {

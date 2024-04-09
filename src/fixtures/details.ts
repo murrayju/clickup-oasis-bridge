@@ -1234,6 +1234,39 @@ export const details: Detail[] = [
     "import_date": null
   },
   {
+    "id": 133,
+    "group": 33,
+    "name": "Agency obtained EMAIL San Diego Food Bank consent (on paper)",
+    "index": 0,
+    "template_key": "",
+    "other_input": false,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
+    "id": 134,
+    "group": 33,
+    "name": "Agency obtained EMAIL San Diego Food Bank Consent (verbal consent)",
+    "index": 1,
+    "template_key": "",
+    "other_input": false,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
+    "id": 135,
+    "group": 33,
+    "name": "Client no longer consents (removal of consent)",
+    "index": 2,
+    "template_key": "",
+    "other_input": false,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
     "id": 79,
     "group": 18,
     "name": "Union Member",
@@ -1267,8 +1300,63 @@ export const details: Detail[] = [
     "import_date": null
   },
   {
+    "id": 136,
+    "group": 34,
+    "name": "Other",
+    "index": 0,
+    "template_key": "",
+    "other_input": true,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
     "id": 126,
     "group": 31,
+    "name": "Other",
+    "index": 0,
+    "template_key": "",
+    "other_input": true,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
+    "id": 137,
+    "group": 35,
+    "name": "Agency obtained TEXT MESSAGE San Diego Food Bank consent (on paper)",
+    "index": 0,
+    "template_key": "",
+    "other_input": false,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
+    "id": 138,
+    "group": 35,
+    "name": "Agency obtained TEXT MESSAGE San Diego Food Bank (verbal consent)",
+    "index": 1,
+    "template_key": "",
+    "other_input": false,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
+    "id": 139,
+    "group": 35,
+    "name": "Client no longer consents (removal of consent)",
+    "index": 2,
+    "template_key": "",
+    "other_input": false,
+    "show_groups": [],
+    "import_id": "",
+    "import_date": null
+  },
+  {
+    "id": 140,
+    "group": 36,
     "name": "Other",
     "index": 0,
     "template_key": "",
