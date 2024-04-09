@@ -825,7 +825,9 @@ export const mapDemographic = (
       const optIn = task.getDropdownString(`optin_email`)?.[0] === '1';
       return {
         detailNames: 'Other',
-        value: optIn ? formatDate() : '',
+        value: optIn
+          ? formatDate(new Date(parseInt(task.task.date_created, 10)))
+          : '',
       };
     }
     case OasisGroup.textConsent: {
@@ -842,7 +844,9 @@ export const mapDemographic = (
       const optIn = task.getDropdownString(`optin_text`)?.[0] === '1';
       return {
         detailNames: 'Other',
-        value: optIn ? formatDate() : '',
+        value: optIn
+          ? formatDate(new Date(parseInt(task.task.date_created, 10)))
+          : '',
       };
     }
     default: {
