@@ -801,8 +801,7 @@ export const mapDemographic = (
     }
     case OasisGroup.language: {
       return {
-        detailNames: 'Other',
-        value: task.getString(`${prefix}lang`),
+        detailNames: task.getString(`${prefix}lang`) || 'Other',
       };
     }
     case OasisGroup.proxy: {
