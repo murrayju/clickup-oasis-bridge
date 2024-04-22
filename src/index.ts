@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import express, { NextFunction, type Request, type Response } from 'express';
 import ngrok from 'ngrok';
-// import fs from 'fs';
+import fs from 'fs';
 
 import {
   ClickUpService,
@@ -32,6 +32,24 @@ import {
   CLICKUP_STATUS_TODO,
   NGROK_AUTH_TOKEN,
 } from './env.js';
+
+try {
+  // git rev-parse HEAD
+  if (fs.existsSync('./GIT_SHA')) {
+    logger.info(`GIT_SHA: ${fs.readFileSync('./GIT_SHA').toString().trim()}`);
+  } else if (fs.existsSync('./.git')) {
+    const branch = fs.readFileSync('./.git/HEAD').toString().trim();
+    if (branch.startsWith('ref: ')) {
+      const ref = branch.slice('ref: '.length);
+      const sha = fs.readFileSync(`./.git/${ref}`).toString().trim();
+      logger.info(`GIT_SHA: ${sha}`);
+    } else {
+      logger.info(`GIT_SHA: ${branch}`);
+    }
+  }
+} catch (err) {
+  logger.error(err);
+}
 
 const clickUpService = new ClickUpService(CLICKUP_API_TOKEN, CLICKUP_TEAM_ID);
 const oasisService = new OasisService(OASIS_API_TOKEN, OASIS_BASE_URL);
