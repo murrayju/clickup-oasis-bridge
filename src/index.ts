@@ -184,7 +184,7 @@ const processTaskWithLock = async <T>(
 
 let pollInterval: NodeJS.Timeout | null = null;
 let processingList: null | Promise<void> = null;
-if (CLICKUP_POLL_INTERVAL && CLICKUP_LIST_ID) {
+if (CLICKUP_POLL_INTERVAL && CLICKUP_POLL_INTERVAL !== '0' && CLICKUP_LIST_ID) {
   pollInterval = setInterval(
     () => {
       if (processingList) {
