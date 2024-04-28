@@ -96,6 +96,15 @@ export class ClickUpService {
       },
     });
   }
+
+  async setTaskStatus(taskId: string, status: string): Promise<void> {
+    await this.fetch(`task/${taskId}`, {
+      method: 'PUT',
+      json: {
+        status,
+      },
+    });
+  }
 }
 
 interface Comment {

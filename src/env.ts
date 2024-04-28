@@ -41,4 +41,5 @@ export const {
   NGROK_AUTH_TOKEN,
   PORT = '80',
   PUBLIC_URL,
+  WEBHOOK_IMPORT_DELAY_SEC = '10',
 } = process.env;

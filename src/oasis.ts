@@ -280,7 +280,7 @@ export class OasisService {
   async importClickUpTask(
     clickUpService: ClickUpService,
     task: ClickUpTask,
-  ): Promise<Case> {
+  ): Promise<Case | null> {
     if (
       task.task.status.status?.toLowerCase() !==
       CLICKUP_STATUS_TODO.toLowerCase()
@@ -300,16 +300,21 @@ export class OasisService {
     };
     try {
       // set task status to processing
-      await clickUpService.fetch(`task/${task.id}`, {
-        method: 'PUT',
-        json: {
-          status: CLICKUP_STATUS_PROCESSING,
-        },
-      });
+      await clickUpService.setTaskStatus(task.id, CLICKUP_STATUS_PROCESSING);
 
       const existingCase = task.getString('case_url');
       if (existingCase) {
         throw new Error(`Task already has case: ${existingCase}`);
+      }
+
+      // Check that ClickUp automations have finished
+      const lang = task.getString('hoh_lang');
+      if (!lang) {
+        jLog(
+          `The hoh_lang field is not set. ClickUp automations may not have finished yet. Will try again at the next polling interval.`,
+        );
+        await clickUpService.setTaskStatus(task.id, CLICKUP_STATUS_TODO);
+        return null;
       }
 
       // Check for duplicate tasks by email
@@ -554,23 +559,13 @@ export class OasisService {
       }
 
       // set task status
-      await clickUpService.fetch(`task/${task.id}`, {
-        method: 'PUT',
-        json: {
-          status: CLICKUP_STATUS_SUCCESS,
-        },
-      });
+      await clickUpService.setTaskStatus(task.id, CLICKUP_STATUS_SUCCESS);
 
       log.info(`job complete`);
       return hohCase;
     } catch (err) {
       // set task status
-      await clickUpService.fetch(`task/${task.id}`, {
-        method: 'PUT',
-        json: {
-          status: CLICKUP_STATUS_ERROR,
-        },
-      });
+      await clickUpService.setTaskStatus(task.id, CLICKUP_STATUS_ERROR);
       jLog('OASIS import failed:', err as Error);
       log.error(`job failed`, err);
       throw err;
@@ -587,7 +582,7 @@ export class OasisService {
   async importClickUpTaskById(
     clickUpService: ClickUpService,
     taskId: string,
-  ): Promise<Case> {
+  ): Promise<Case | null> {
     const task = new ClickUpTask(await clickUpService.fetch(`task/${taskId}`));
     // (await import('fs')).writeFileSync(
     //   './src/fixtures/task.ts',

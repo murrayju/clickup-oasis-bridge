@@ -31,6 +31,7 @@ import {
   PUBLIC_URL,
   CLICKUP_STATUS_TODO,
   NGROK_AUTH_TOKEN,
+  WEBHOOK_IMPORT_DELAY_SEC,
 } from './env.js';
 
 try {
@@ -268,9 +269,18 @@ app.post(
           const taskId = taskCreated.task_id;
           logger.info(`webhook(taskCreated): ${taskId}`);
 
-          await processTaskWithLock(taskId, () =>
-            oasisService.importClickUpTaskById(clickUpService, taskId),
-          );
+          await processTaskWithLock(taskId, async () => {
+            if (WEBHOOK_IMPORT_DELAY_SEC) {
+              logger.info(`delaying import by ${WEBHOOK_IMPORT_DELAY_SEC} sec`);
+              await new Promise((resolve) =>
+                setTimeout(
+                  resolve,
+                  parseInt(WEBHOOK_IMPORT_DELAY_SEC, 10) * 1000,
+                ),
+              );
+            }
+            return oasisService.importClickUpTaskById(clickUpService, taskId);
+          });
           break;
         }
         default: {
